@@ -47,8 +47,78 @@ const fmtNum = v => {
 
 // Time-domain panel: uPlot, x-zoom shared between all panels of the file. Rebuilt when the theme changes,
 // because the canvas needs resolved colours.
-function TimePlot({ t, y, name, token, win, onWin, theme }) {
-  const el = useRef(), plot = useRef();
+// uPlot only listens to the mouse, so touch is handled here: pinch zooms time, a sideways drag pans, a
+// double-tap goes back to the default window. touch-action: pan-y leaves vertical swipes to the page.
+function TimePlot({ t, y, name, unit, token, win, onWin, minSpan, theme }) {
+  const el = useRef(), plot = useRef(), readout = useRef();
+  const live = useRef();
+  live.current = { t, win, onWin, minSpan };
+  useEffect(() => {
+    const node = el.current;
+    let g = null, lastTap = null;
+    const rect = () => (plot.current?.over || node).getBoundingClientRect();
+    const view = () => { const L = live.current; return L.win || [L.t[0], L.t[L.t.length - 1]]; };
+    // Clamp a window to the record and the minimum span; the whole record is null (same as double-click).
+    // Touch moves arrive about once per frame, so each one updates the window directly.
+    const emit = (a, b) => {
+      const L = live.current, t0 = L.t[0], t1 = L.t[L.t.length - 1];
+      const span = Math.max(L.minSpan, Math.min(b - a, t1 - t0));
+      if (span >= t1 - t0) return L.onWin(null);
+      a = Math.max(t0, Math.min(a, t1 - span));
+      L.onWin([a, a + span]);
+    };
+    const start = e => {
+      const r = rect(), v = view(), toT = x => v[0] + (x - r.left) / r.width * (v[1] - v[0]);
+      if (e.touches.length === 2) {
+        const [p, q] = e.touches;
+        g = { mode: 'pinch', dist: Math.hypot(p.clientX - q.clientX, p.clientY - q.clientY) || 1, at: toT((p.clientX + q.clientX) / 2), v, r };
+      } else if (e.touches.length === 1) {
+        const p = e.touches[0];
+        g = { mode: 'one', x: p.clientX, y: p.clientY, time: performance.now(), v, r, moved: false };
+      }
+    };
+    const move = e => {
+      if (!g) return;
+      if (g.mode === 'pinch' && e.touches.length === 2) {
+        e.preventDefault();
+        const [p, q] = e.touches;
+        const span = (g.v[1] - g.v[0]) * g.dist / Math.max(1, Math.hypot(p.clientX - q.clientX, p.clientY - q.clientY));
+        const mid = (p.clientX + q.clientX) / 2;
+        // Keep the instant that started under the fingers' midpoint under it.
+        const a = g.at - (mid - g.r.left) / g.r.width * span;
+        emit(a, a + span);
+      } else if (g.mode === 'one' && e.touches.length === 1) {
+        const p = e.touches[0], dx = p.clientX - g.x, dy = p.clientY - g.y;
+        if (!g.moved && Math.hypot(dx, dy) > 8) { g.moved = true; g.pan = Math.abs(dx) > Math.abs(dy); }
+        if (g.pan) {
+          e.preventDefault();
+          const shift = -dx / g.r.width * (g.v[1] - g.v[0]);
+          emit(g.v[0] + shift, g.v[1] + shift);
+        }
+      }
+    };
+    const end = e => {
+      if (g?.mode === 'one' && !g.moved && performance.now() - g.time < 300) {
+        const p = e.changedTouches[0], now = performance.now();
+        if (lastTap && now - lastTap.time < 320 && Math.hypot(p.clientX - lastTap.x, p.clientY - lastTap.y) < 30) {
+          e.preventDefault();  // also stops the browser's synthetic dblclick, which would show the whole record
+          lastTap = null;
+          live.current.onWin(undefined);
+        } else lastTap = { time: now, x: p.clientX, y: p.clientY };
+      }
+      // A pinch ending with one finger still down continues as a fresh one-finger gesture, not a jump.
+      if (e.touches.length === 1) { start(e); g.moved = true; } else if (!e.touches.length) g = null;
+    };
+    node.addEventListener('touchstart', start, { passive: true });
+    node.addEventListener('touchmove', move, { passive: false });
+    node.addEventListener('touchend', end, { passive: false });
+    const cancel = () => { g = null; };
+    node.addEventListener('touchcancel', cancel);
+    return () => {
+      node.removeEventListener('touchstart', start); node.removeEventListener('touchmove', move);
+      node.removeEventListener('touchend', end); node.removeEventListener('touchcancel', cancel);
+    };
+  }, []);
   useEffect(() => {
     const ink = cssVar('--muted'), grid = cssVar('--grid'), tick = cssVar('--line');
     const axis = { stroke: ink, grid: { stroke: grid, width: 1 }, ticks: { stroke: tick, width: 1 }, font: '11px Arial' };
@@ -64,6 +134,14 @@ function TimePlot({ t, y, name, token, win, onWin, theme }) {
       ],
       series: [{}, { stroke: cssVar(token), width: +cssVar('--lw') || 1.6, points: { show: false } }],
       hooks: {
+        // Value under the cursor (mouse hover or a tap), for this panel; the cursor is synced across panels.
+        setCursor: [u => {
+          const i = u.cursor.idx, r = readout.current;
+          if (!r) return;
+          if (i == null || u.cursor.left < 0) { r.hidden = true; return; }
+          r.hidden = false;
+          r.textContent = t[i].toFixed(4) + ' s · ' + fmtNum(y[i]) + ' ' + unit;
+        }],
         setSelect: [u => {
           if (u.select.width > 2) onWin([u.posToVal(u.select.left, 'x'), u.posToVal(u.select.left + u.select.width, 'x')]);
           u.setSelect({ left: 0, width: 0, top: 0, height: 0 }, false);
@@ -91,7 +169,12 @@ function TimePlot({ t, y, name, token, win, onWin, theme }) {
       u.setScale('y', { min: lo - pad, max: hi + pad });
     });
   }, [win, t, y, theme]);
-  return <div ref={el} class="plot" aria-label={name + ' time history'} role="img" />;
+  return (
+    <div class="plot-w">
+      <div ref={el} class="plot" aria-label={name + ' time history'} role="img" />
+      <div ref={readout} class="readout num" hidden aria-hidden="true" />
+    </div>
+  );
 }
 
 function freqStep(fmax) {
@@ -141,7 +224,7 @@ function SpecPlot({ spec, pk, fmax, fn }) {
   );
 }
 
-function Panel({ name, t, raw, fs, ftp, fmax, fn, win, onWin, caption, theme }) {
+function Panel({ name, t, raw, fs, ftp, fmax, fn, win, onWin, minSpan, caption, theme }) {
   const m = meta(name);
   const y = useMemo(() => { const o = new Float64Array(raw.length); for (let i = 0; i < raw.length; i++) o[i] = raw[i] * m.scale; return o; }, [raw, m.scale]);
   const spec = useMemo(() => spectrum(raw, fs, fmax), [raw, fs, fmax]);
@@ -161,7 +244,7 @@ function Panel({ name, t, raw, fs, ftp, fmax, fn, win, onWin, caption, theme }) 
       </div>
       <div class="panel-b">
         <div class="tplot">
-          <TimePlot t={t} y={y} name={name} token={token} win={win} onWin={onWin} theme={theme} />
+          <TimePlot t={t} y={y} name={name} unit={m.unit} token={token} win={win} onWin={onWin} minSpan={minSpan} theme={theme} />
           <div class="axis-c">{caption}</div>
         </div>
         <div class="splot"><SpecPlot spec={spec} pk={pk} fmax={fmax} fn={fn} /></div>
@@ -267,13 +350,22 @@ export function FileView({ index, d, k, theme }) {
 
   const defWin = t ? [t[T - 1] - 4 * 60 / rpm, t[T - 1]] : null;
   const curWin = win === undefined ? defWin : win;
-  // Touchscreens cannot drag-zoom uPlot, so the caption carries a button between the two standard views.
+  // Preset windows for every panel: the last revolution, the default last 4, or the whole record.
+  const rev = 60 / rpm;
+  const minSpan = fs ? Math.max(20 / fs, rev / 8) : 0;
+  const lastRev = t && Array.isArray(win) && Math.abs(win[1] - win[0] - rev) < rev * 0.01 && Math.abs(win[1] - t[T - 1]) < 2 / fs;
+  const presets = [['1 rev', t ? [t[T - 1] - rev, t[T - 1]] : null, lastRev], ['4 revs', undefined, win === undefined], ['All', null, win === null]];
   const touch = matchMedia('(pointer: coarse)').matches;
   const what = win === undefined ? 'Last 4 of ' + revs + ' revolutions' : win === null ? 'All ' + revs + ' revolutions'
     : win ? ((win[1] - win[0]) * rpm / 60).toFixed(1) + ' revolutions' : '';
-  const hint = touch ? '' : win === null ? ' · drag to zoom' : ' · drag to zoom, double-click for the whole record';
-  const caption = <>{what}{hint}{t && <> · <button type="button" class="linkbtn cap-btn" onClick={() => setWin(win === null ? undefined : null)}>
-    {win === null ? 'show last 4' : 'show all ' + revs}</button></>}</>;
+  const hint = touch ? ' · pinch to zoom, double-tap to reset' : win === null ? ' · drag to zoom' : ' · drag to zoom, double-click for the whole record';
+  // The preset buttons sit under each time plot, beside the zoom they control (the toolbar stays one row).
+  const caption = <>
+    <span>{what}{hint}</span>
+    {t && <span class="wins" role="group" aria-label="Time window">
+      {presets.map(([label, w, on]) => <button type="button" aria-pressed={on ? 'true' : 'false'} onClick={() => setWin(w)}>{label}</button>)}
+    </span>}
+  </>;
 
   const effBody = qty === 'force' ? 't' : body;
   const quickNames = resultant ? ['ForceRnew'] : qty === 'force' ? ['Forcex', 'Forcey'] : ['x', 'y'].map(a => a + effBody + qty);
@@ -415,7 +507,7 @@ export function FileView({ index, d, k, theme }) {
           ) : plotted.length === 0 ? (
             <div class="empty" style="padding:40px">Pick a signal to plot.</div>
           ) : plotted.map(s => (
-            <Panel key={s + name} name={s} t={t} raw={v[s].data} fs={fs} ftp={ftp} fmax={fmax} fn={fn} win={curWin} onWin={setWin} caption={caption} theme={theme} />
+            <Panel key={s + name} name={s} t={t} raw={v[s].data} fs={fs} ftp={ftp} fmax={fmax} fn={fn} win={curWin} onWin={setWin} minSpan={minSpan} caption={caption} theme={theme} />
           ))}
 
           <div class="legend" style="padding:0 4px">

@@ -210,9 +210,15 @@ a.fitem:hover { border-color: var(--tint-line); background: var(--tint); color: 
 .tplot { flex: 3 1 420px; min-width: 0; }
 .splot { flex: 1 1 220px; min-width: 0; }
 .plot { background: var(--plot); border-radius: 6px; height: 170px; overflow: hidden; }
-.axis-c { font-size: 11px; color: var(--muted); padding-top: 4px; text-align: center; }
-.cap-btn { font-size: 11px; height: auto; padding: 4px 2px; }
-@media (pointer: coarse) { .cap-btn { font-size: 13px; padding: 10px 6px; } }
+.axis-c { font-size: 11px; color: var(--muted); padding-top: 4px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; }
+.wins { display: inline-flex; gap: 2px; }
+.wins button { border: 1px solid transparent; background: transparent; color: var(--link); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; cursor: pointer; }
+.wins button:hover { border-color: var(--field); }
+.wins button[aria-pressed='true'] { background: var(--panel); border-color: var(--field); color: var(--ink); }
+@media (pointer: coarse) { .wins button { font-size: 13px; padding: 7px 12px; } }
+.plot-w { position: relative; }
+.plot { touch-action: pan-y; }  /* vertical swipes scroll the page; pinch and sideways drags go to the plot */
+.readout { position: absolute; top: 4px; right: 6px; font-size: 11px; color: var(--ink); background: color-mix(in srgb, var(--plot) 88%, transparent); padding: 1px 5px; border-radius: 4px; pointer-events: none; }
 .spec { position: relative; height: 170px; background: var(--plot); border-radius: 6px; overflow: hidden; }
 .spec svg { display: block; width: 100%; height: 100%; }
 .spec-ticks { position: relative; height: 18px; font-size: 11px; color: var(--muted); }
