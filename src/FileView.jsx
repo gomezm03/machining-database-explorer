@@ -6,7 +6,7 @@ import { readMat } from './mat5.js';
 import { spectrum, peaks } from './dsp.js';
 import { cssVar } from './themes.js';
 import { getFile, prefetch, cacheStats, clearCache } from './filecache.js';
-import { GroupPill, MIRROR, KAGGLE, fileUrl, repoPath, loadDataset, fmt, fmtBytes, family } from './data.js';
+import { GroupPill, KAGGLE, fileUrl, repoPath, loadDataset, fmt, fmtBytes, family } from './data.js';
 
 const ALL = ['xtpos', 'ytpos', 'xtvel', 'ytvel', 'xtacc', 'ytacc', 'xwpos', 'ywpos', 'xwvel', 'ywvel', 'xwacc', 'ywacc', 'Forcex', 'Forcey'];
 // Display unit and scale from SI, per signal.
@@ -283,7 +283,7 @@ function Sound({ n, k, fs, rpm }) {
     if (!audio.current) {
       audio.current = new Audio(fileUrl(n, name));
       audio.current.onended = () => setPlaying(false);
-      audio.current.onerror = () => { setErr('Not on the mirror yet'); setPlaying(false); };
+      audio.current.onerror = () => { setErr('Not available yet'); setPlaying(false); };
     }
     if (playing) { audio.current.pause(); setPlaying(false); }
     else { setErr(null); audio.current.play().then(() => setPlaying(true), () => setErr('Could not play this file')); }
@@ -493,13 +493,13 @@ export function FileView({ index, d, k, theme }) {
               {err === 'nocut'
                 ? <>Dataset {d.n} has no file {k}: its files are numbered 1 to {fmt(d.files)}. <a href={'#/ds/' + d.n}>Pick one on the grid of cuts</a>.</>
                 : err === 'missing'
-                  ? <>This file is not on the Hugging Face mirror yet: the full upload is still running. Try <a href="#/file/1/34">time1_34.mat</a>, or get it from <a href={KAGGLE} target="_blank" rel="noopener">Kaggle</a>.</>
+                  ? <>This file is not available yet. Try <a href="#/file/1/34">time1_34.mat</a>, or get it from <a href={KAGGLE} target="_blank" rel="noopener">Kaggle</a>.</>
                   : <>Could not load {name}: {err}</>}
             </div>
           ) : !v ? (
             <>
               <div class="note" role="status" style="font-size:13px;padding:0 4px">
-                Fetching {name} from the Hugging Face mirror{progress ? ' · ' + (progress[0] / 1e6).toFixed(1) + (progress[1] ? ' / ' + (progress[1] / 1e6).toFixed(1) : '') + ' MB' : '…'}
+                Fetching {name}{progress ? ' · ' + (progress[0] / 1e6).toFixed(1) + (progress[1] ? ' / ' + (progress[1] / 1e6).toFixed(1) : '') + ' MB' : '…'}
                 <div class="progress"><span style={{ width: (pct ?? 4) + '%' }} /></div>
               </div>
               {(plotted.length ? plotted : [0]).map(() => <SkeletonPanel />)}
@@ -532,7 +532,7 @@ export function FileView({ index, d, k, theme }) {
               <dt>Duration</dt><dd>{v ? dur.toFixed(3) + ' s · ' + revs + ' revs' : '…'}</dd>
               <dt>Per revolution</dt><dd>{v ? +perRev.toFixed(1) + ' samples (' + +(perRev / d.p.teeth).toFixed(1) + ' per tooth)' : '…'}</dd>
               <dt>File size</dt><dd>{cur ? fmtBytes(cur.bytes) : size ? fmtBytes(size) : '…'}</dd>
-              <dt>Loaded from</dt><dd>{!cur ? '…' : cur.source === 'mirror' ? 'mirror · ' + (cur.ms / 1000).toFixed(1) + ' s' : cur.source === 'cache' ? 'browser cache · ' + Math.round(cur.ms) + ' ms' : 'memory'}</dd>
+              <dt>Loaded from</dt><dd>{!cur ? '…' : cur.source === 'mirror' ? 'download · ' + (cur.ms / 1000).toFixed(1) + ' s' : cur.source === 'cache' ? 'browser cache · ' + Math.round(cur.ms) + ' ms' : 'memory'}</dd>
             </dl>
           </section>
 
@@ -546,7 +546,7 @@ export function FileView({ index, d, k, theme }) {
 
           <section class="card" style="padding:16px 18px">
             <h2 class="t">Source</h2>
-            <p class="note" style="margin:0">Streamed from the <a href={MIRROR} target="_blank" rel="noopener">Hugging Face mirror</a> and parsed in your browser. The original is on <a href={KAGGLE} target="_blank" rel="noopener">Kaggle</a> (CC BY-ND 4.0). <a href={fileUrl(d.n, name)}>Download this file</a>.</p>
+            <p class="note" style="margin:0">Downloaded and parsed in your browser. The original is on <a href={KAGGLE} target="_blank" rel="noopener">Kaggle</a> (CC BY-ND 4.0). <a href={fileUrl(d.n, name)}>Download this file</a>.</p>
             {stats.files > 0 && (
               <p class="note" style="margin:8px 0 0">Files you open are kept in this browser so they load instantly next time: {stats.files} {stats.files === 1 ? 'file' : 'files'}, {fmtBytes(stats.bytes)} (up to 300 MB). <button type="button" class="linkbtn" style="height:auto;padding:0;font-size:12px" onClick={async () => { await clearCache(); setStats(cacheStats()); }}>Clear</button></p>
             )}

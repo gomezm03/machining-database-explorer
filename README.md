@@ -1,6 +1,6 @@
 # Machining Database Explorer
 
-Browse the [Digital Machining Database](https://www.kaggle.com/datasets/tonylschmitz/digital-machining-database) (155 simulated milling datasets, CC BY-ND 4.0) in the browser. The site ships a small prebuilt index; signals are fetched one file at a time from the [Hugging Face mirror](https://huggingface.co/datasets/gomezmfg/digital-machining-database) and parsed client-side.
+Browse the [Digital Machining Database](https://www.kaggle.com/datasets/tonylschmitz/digital-machining-database) (155 simulated milling datasets, CC BY-ND 4.0) in the browser. The site ships a small prebuilt index; signals are fetched one file at a time from a [public copy of the data on Hugging Face](https://huggingface.co/datasets/gomezmfg/digital-machining-database) and parsed client-side.
 
 ## Develop
 

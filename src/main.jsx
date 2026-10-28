@@ -42,7 +42,7 @@ function Header({ route, index, last, theme, setTheme }) {
         <a class="brand" href="#/">
           <div>
             <div class="brand-t">Machining Database Explorer</div>
-            <div class="brand-s">Digital Machining Database · Kaggle v17 · Hugging Face mirror</div>
+            <div class="brand-s">Digital Machining Database · Kaggle v17</div>
           </div>
         </a>
         <nav class="nav" aria-label="Main">
@@ -56,7 +56,7 @@ function Header({ route, index, last, theme, setTheme }) {
               <span><strong>{t.datasets}</strong> datasets</span>
               <span><strong>{fmt(t.cuts)}</strong> cuts</span>
               <span><strong>{fmt(t.wav)}</strong> sound files</span>
-              <span><strong>60.4 GB</strong> on the mirror</span>
+              <span><strong>60.4 GB</strong> of data</span>
             </div>
           )}
           <ThemePicker theme={theme} setTheme={setTheme} />
