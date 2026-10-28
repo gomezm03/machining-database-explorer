@@ -29,13 +29,16 @@ const P = {
   noise: <path d="M2 12h3l1.5-4 2 8 2-10 2 12 2-8 1.5 4 1-2h6" />,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></>,
   check: <path d="M5 12l5 5 9-10" />,
+  palette: <><path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.9-.8 1.9-1.8 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8h2.1a3.7 3.7 0 0 0 3.7-3.7C20.5 6.9 16.7 3.5 12 3.5z" /><circle cx="7.75" cy="11" r="1.1" fill="currentColor" stroke="none" /><circle cx="10.25" cy="7.5" r="1.1" fill="currentColor" stroke="none" /><circle cx="14.5" cy="7.5" r="1.1" fill="currentColor" stroke="none" /></>,
+  chevron: <path d="M6.5 9.5L12 15l5.5-5.5" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
 };
 
-export function Icon({ name, size = 20, color = 'currentColor', stroke = 1.75, label, style }) {
+// `color` may be a CSS value such as 'var(--accent)'; it is applied as CSS so theme tokens resolve.
+export function Icon({ name, size = 20, color, stroke = 1.75, label, style }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} color={color} stroke-width={stroke}
-      stroke-linecap="round" stroke-linejoin="round" style={style}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={stroke}
+      stroke-linecap="round" stroke-linejoin="round" style={color ? { color, flex: 'none', ...style } : { flex: 'none', ...style }}
       role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : 'true'}>
       {P[name]}
     </svg>

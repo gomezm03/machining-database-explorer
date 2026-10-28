@@ -1,6 +1,6 @@
-import { useMemo } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import { Icon } from './icons.jsx';
-import { FACETS, GROUPS, describe, subtitle, haystack, fmt, kfmt, pitchOf, immersionOf, dirOf } from './data.js';
+import { FACETS, GROUPS, GroupPill, describe, subtitle, haystack, fmt, kfmt, pitchOf, immersionOf, dirOf } from './data.js';
 
 const GROUP_BYS = [['group', 'Dataset group'], ['dyn', 'Dynamics'], ['force', 'Force model'], ['tool', 'Tool'], ['cut', 'Cut']];
 
@@ -25,8 +25,9 @@ function lobeGeom(d) {
   return { path, top, max: max.toFixed(1), min: Math.min(...b).toFixed(2) };
 }
 
+const AXIS_TEXT = { fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '10px', fill: 'var(--muted)' };
+
 function DatasetCard({ d }) {
-  const g = GROUPS[d.group];
   const lb = useMemo(() => lobeGeom(d), [d]);
   const t = describe(d);
   const speeds = fmt(d.om[0]) + '–' + fmt(d.om[1]) + ' rpm';
@@ -34,16 +35,16 @@ function DatasetCard({ d }) {
     <a class="ds" href={'#/ds/' + d.n} aria-label={'Open dataset ' + d.n}>
       <div class="ds-h">
         <span class="ds-n">Dataset {d.n}</span>
-        <span class="pill" style={{ background: g.bg, color: g.fg }}>{g.label}</span>
-        {d.wav > 0 && <span title="Has .wav sound" style="margin-left:auto;display:flex"><Icon name="sound" size={18} color="#4A5468" label="Has sound" /></span>}
+        <GroupPill group={d.group} />
+        {d.wav > 0 && <span title="Has .wav sound" style="margin-left:auto;display:flex"><Icon name="sound" size={18} color="var(--subtle)" label="Has sound" /></span>}
       </div>
       <div class="ds-sub">{subtitle(d)}</div>
       <svg class="lobe" width="100%" viewBox="0 0 300 108" role="img" aria-label={'Stability lobes of dataset ' + d.n + ': ' + speeds + ', limiting depth ' + lb.min + '–' + lb.max + ' mm'}>
-        <rect x="34" y="8" width="258" height="78" fill="#FCEFE8" />
-        <path d={lb.path + ' L292,86 L34,86 Z'} fill="#E3EDF9" />
-        <path d={lb.path} fill="none" stroke="#012169" stroke-width="1.5" stroke-linejoin="round" />
-        <path d="M34 8V86H292" fill="none" stroke="#8C96A8" stroke-width="1" />
-        <g font-family="Arial, Helvetica, sans-serif" font-size="10" fill="#4A5468">
+        <rect x="34" y="8" width="258" height="78" style={{ fill: 'var(--chatter-fill)' }} />
+        <path d={lb.path + ' L292,86 L34,86 Z'} style={{ fill: 'var(--stable-fill)' }} />
+        <path d={lb.path} fill="none" stroke-width="1.5" stroke-linejoin="round" style={{ stroke: 'var(--fit)' }} />
+        <path d="M34 8V86H292" fill="none" stroke-width="1" style={{ stroke: 'var(--subtle)' }} />
+        <g style={AXIS_TEXT}>
           <text x="30" y="12" text-anchor="end">{lb.top}</text>
           <text x="30" y="89" text-anchor="end">0</text>
           <text x="12" y="50" text-anchor="middle" transform="rotate(-90 12 50)">b mm</text>
@@ -52,13 +53,13 @@ function DatasetCard({ d }) {
         </g>
       </svg>
       <div class="facts">
-        <Icon name="dynamics" size={18} color="#0057B8" label="Dynamics" /><span>{t.dyn}</span>
-        <Icon name="force" size={18} color="#0057B8" label="Force model" /><span>{t.force}</span>
-        <Icon name="tool" size={18} color="#0057B8" label="Tool" /><span>{t.tool}</span>
-        <Icon name="cut" size={18} color="#0057B8" label="Cut" /><span>{t.cut}</span>
+        <Icon name="dynamics" size={18} label="Dynamics" /><span>{t.dyn}</span>
+        <Icon name="force" size={18} label="Force model" /><span>{t.force}</span>
+        <Icon name="tool" size={18} label="Tool" /><span>{t.tool}</span>
+        <Icon name="cut" size={18} label="Cut" /><span>{t.cut}</span>
       </div>
       <div class="ds-f">
-        <span style="color:#4A5468"><strong style="color:#1B2433">{fmt(d.files)}</strong> cut files</span>
+        <span><strong class="num">{fmt(d.files)}</strong> cut files</span>
         <span class="open">Open grid →</span>
       </div>
     </a>
@@ -68,6 +69,7 @@ function DatasetCard({ d }) {
 export function Explorer({ index, state, setState }) {
   const { sel, groupBy, q } = state;
   const all = index.datasets;
+  const [filtersOpen, setFiltersOpen] = useState(false);  // phones only; always shown from 900 px up
 
   const counts = useMemo(() => {
     const c = {};
@@ -83,7 +85,7 @@ export function Explorer({ index, state, setState }) {
     setState({ sel: s });
   };
 
-  // OR within a facet, AND across facets; search terms must all appear.
+  // OR within a facet, AND across facets; comma-separated search terms must all match.
   const terms = q.trim().toLowerCase().split(/\s*,\s*|\s{2,}/).filter(Boolean);
   const hits = all.filter(d => FACETS.every(f => {
     const act = f.options.filter(([id]) => sel[f.key + ':' + id]);
@@ -99,16 +101,22 @@ export function Explorer({ index, state, setState }) {
 
   const chips = [];
   FACETS.forEach(f => f.options.forEach(([id, label]) => { if (sel[f.key + ':' + id]) chips.push({ key: f.key, id, label }); }));
+  const nSel = chips.length;
+  const groupDot = label => Object.values(GROUPS).find(g => g.label === label)?.dot;
 
   return (
     <div class="page">
       <div class="toolbar">
         <label for="q" class="sr">Search datasets</label>
         <div class="search">
-          <Icon name="search" size={20} color="#4A5468" />
+          <Icon name="search" size={20} />
           <input id="q" type="search" value={q} onInput={e => setState({ q: e.currentTarget.value })}
             placeholder="Search by dataset number, tool, dynamics… e.g. 25, 2 teeth, process damping" />
         </div>
+        <button type="button" class="filters-toggle" aria-expanded={filtersOpen ? 'true' : 'false'} aria-controls="filters" onClick={() => setFiltersOpen(o => !o)}>
+          <Icon name="settings" size={18} />{filtersOpen ? 'Hide filters' : 'Filters'}
+          {nSel > 0 && <span class="badge">{nSel}</span>}
+        </button>
         <div class="seg" role="group" aria-label="Classify by">
           <span class="seg-l">Classify by</span>
           {GROUP_BYS.map(([id, label]) => (
@@ -118,19 +126,19 @@ export function Explorer({ index, state, setState }) {
       </div>
 
       <div class="row">
-        <aside class="card filters" aria-label="Filters">
+        <aside id="filters" class={'card filters' + (filtersOpen ? '' : ' collapsed')} aria-label="Filters">
           <div class="filters-h">
-            <h2><Icon name="settings" size={18} color="#012169" />Filters</h2>
+            <h2><Icon name="settings" size={18} color="var(--accent)" />Filters</h2>
             <span class="note">counts across all {all.length}</span>
           </div>
           {FACETS.map(f => (
             <section class="facet">
-              <h3><Icon name={f.icon} size={20} color="#0057B8" />{f.title}</h3>
+              <h3><Icon name={f.icon} size={20} />{f.title}</h3>
               {f.options.map(([id, label]) => {
                 const on = !!sel[f.key + ':' + id];
                 return (
                   <button type="button" class="opt" aria-pressed={on ? 'true' : 'false'} onClick={() => toggle(f.key, id)}>
-                    <span class="box">{on && <Icon name="check" size={12} color="#FFFFFF" stroke={3.5} />}</span>
+                    <span class="box">{on && <Icon name="check" size={12} stroke={3.5} />}</span>
                     {f.key === 'group' && <span class="dot" style={{ background: GROUPS[id].dot }} />}
                     <span style="flex:1">{label}</span>
                     <span class="n">{counts[f.key + ':' + id] || 0}</span>
@@ -143,18 +151,23 @@ export function Explorer({ index, state, setState }) {
 
         <main class="results">
           <div class="chips">
-            <span><strong>{hits.length}</strong> datasets</span>
+            <span><strong class="num">{hits.length}</strong> {hits.length === 1 ? 'dataset' : 'datasets'}</span>
             {chips.map(c => (
               <button type="button" class="chip" aria-label={'Remove filter ' + c.label} onClick={() => toggle(c.key, c.id)}>
-                {c.label}<Icon name="close" size={14} color="#012169" stroke={2.4} />
+                {c.label}<Icon name="close" size={14} stroke={2.4} />
               </button>
             ))}
-            {(chips.length > 0 || q) && <button type="button" class="linkbtn" onClick={() => setState({ sel: {}, q: '' })}>Clear all</button>}
+            {(nSel > 0 || q) && <button type="button" class="linkbtn" onClick={() => setState({ sel: {}, q: '' })}>Clear all</button>}
           </div>
-          {hits.length === 0 && <div class="empty">No datasets match these filters.</div>}
+          {hits.length === 0 && (
+            <div class="empty">
+              No datasets match {q && nSel ? 'this search and these filters' : q ? 'this search' : 'these filters'}.
+              <div style="margin-top:14px"><button type="button" class="tbtn" onClick={() => setState({ sel: {}, q: '' })}>Clear search and filters</button></div>
+            </div>
+          )}
           {order.map(k => (
             <section class="sec">
-              <h2>{k} <span>{groups[k].length + (groups[k].length === 1 ? ' dataset' : ' datasets')}</span></h2>
+              <h2>{groupBy === 'group' && <span class="dot" style={{ background: groupDot(k) }} />}{k} <span class="c">{groups[k].length + (groups[k].length === 1 ? ' dataset' : ' datasets')}</span></h2>
               <div class="cards">{groups[k].map(d => <DatasetCard key={d.n} d={d} />)}</div>
             </section>
           ))}

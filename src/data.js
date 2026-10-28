@@ -1,4 +1,5 @@
 // Index loading, Hugging Face URLs, facet definitions and label formatting shared by the screens.
+import { h } from 'preact';
 
 export const MIRROR = 'https://huggingface.co/datasets/gomezmfg/digital-machining-database';
 export const KAGGLE = 'https://www.kaggle.com/datasets/tonylschmitz/digital-machining-database';
@@ -18,12 +19,13 @@ export const repoPath = (n, name) => {
 };
 export const fileUrl = (n, name) => MIRROR + '/resolve/main/' + repoPath(n, name).split('/').map(encodeURIComponent).join('/');
 
+// Group identity is carried by a small dot in the theme's overlay colour; labels stay neutral.
 export const GROUPS = {
-  unique: { label: 'Unique', bg: '#E3EDF9', fg: '#0057B8', dot: '#0057B8' },
-  noise1: { label: '1% noise', bg: '#DDF2FA', fg: '#00618A', dot: '#00A3E0' },
-  noise5: { label: '5% noise', bg: '#FCE8DD', fg: '#A8431A', dot: '#E0662E' },
-  varpitch: { label: 'Variable pitch', bg: '#E2E6F0', fg: '#012169', dot: '#012169' },
-  sound: { label: 'Sound', bg: '#ECECEC', fg: '#4D4D4D', dot: '#959595' },
+  unique: { label: 'Unique', dot: 'var(--g-unique)' },
+  noise1: { label: '1% noise', dot: 'var(--g-noise1)' },
+  noise5: { label: '5% noise', dot: 'var(--g-noise5)' },
+  varpitch: { label: 'Variable pitch', dot: 'var(--g-varpitch)' },
+  sound: { label: 'Sound', dot: 'var(--g-sound)' },
 };
 
 // Filter ids match the facet keys written by scripts/build_index.py.
@@ -80,12 +82,20 @@ export function family(d) {
 }
 
 export const VARIANT = {
-  unique: { desc: 'clean · 60 revs · 14 signals', color: '#0057B8' },
-  noise1: { desc: '1% noise · same cut', color: '#00A3E0' },
-  noise5: { desc: '5% noise · same cut', color: '#E0662E' },
-  varpitch: { desc: 'variable pitch · 5% noise', color: '#012169' },
-  sound: { desc: 'resultant force only · 500 revs', color: '#959595' },
+  unique: { desc: 'clean · 60 revs · 14 signals', color: GROUPS.unique.dot },
+  noise1: { desc: '1% noise · same cut', color: GROUPS.noise1.dot },
+  noise5: { desc: '5% noise · same cut', color: GROUPS.noise5.dot },
+  varpitch: { desc: 'variable pitch · 5% noise', color: GROUPS.varpitch.dot },
+  sound: { desc: 'resultant force only · 500 revs', color: GROUPS.sound.dot },
 };
+
+export function GroupPill({ group, children }) {
+  const g = GROUPS[group];
+  return h('span', { class: 'pill' }, h('span', { class: 'dot', style: { background: g.dot } }), children || g.label);
+}
+
+/** Bytes as MB or GB. */
+export const fmtBytes = b => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e7 ? Math.round(b / 1e6) + ' MB' : (b / 1e6).toFixed(1) + ' MB';
 
 /** Searchable text, same terms the design's search box hints at. */
 export function haystack(d) {
