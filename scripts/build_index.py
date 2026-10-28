@@ -10,6 +10,7 @@ Run with Anaconda's Python from the explorer folder:
   C:\\Users\\gomez\\anaconda3\\python.exe scripts\\build_index.py [--data ..\\data]
 """
 import argparse
+import collections
 import json
 import math
 import os
@@ -222,10 +223,15 @@ def main():
             p = params[n]
             cx, cy = minmax_bins(om, bl, CARD_BINS)
             dx, dy = minmax_bins(om, bl, DETAIL_BINS)
-            # Analytical comparison only: the files carry no stable/chatter label.
-            blim_at = np.interp([c[1] for c in cuts], om, bl)
-            grid = [[k, o, r(b * 1000, 4), 1 if b * 1000 < bl_k else 0] for (k, o, b), bl_k in zip(cuts, blim_at)]
-            speeds = sorted({c[1] for c in cuts})
+            # The files carry no stability label. The dataset documentation says the depth grid at each speed
+            # stops after "approximately two unstable results", so the two deepest cuts at each speed are
+            # labelled unstable (0) and the rest stable (1). The analytical boundary is kept only as a reference.
+            deepest = collections.defaultdict(list)
+            for k, o, b in cuts:
+                deepest[o].append((b, k))
+            unstable = {k for v in deepest.values() for _, k in sorted(v)[-2:]}
+            grid = [[k, o, r(b * 1000, 4), 0 if k in unstable else 1] for k, o, b in cuts]
+            speeds = sorted(deepest)
             with open(os.path.join(OUT, 'ds', '%d.json' % n), 'w') as fh:
                 json.dump({'n': n, 'grid': grid, 'size': [sizes[c[0]] for c in cuts],
                            'boundary': {'om': [int(v) for v in dx], 'b': [r(v, 3) for v in dy]}},

@@ -5,7 +5,8 @@ import { Icon } from './icons.jsx';
 import { readMat } from './mat5.js';
 import { spectrum, peaks } from './dsp.js';
 import { cssVar } from './themes.js';
-import { GroupPill, VARIANT, MIRROR, KAGGLE, fileUrl, repoPath, loadDataset, fmt, fmtBytes, family } from './data.js';
+import { getFile, prefetch, cacheStats, clearCache } from './filecache.js';
+import { GroupPill, MIRROR, KAGGLE, fileUrl, repoPath, loadDataset, fmt, fmtBytes, family } from './data.js';
 
 const ALL = ['xtpos', 'ytpos', 'xtvel', 'ytvel', 'xtacc', 'ytacc', 'xwpos', 'ywpos', 'xwvel', 'ywvel', 'xwacc', 'ywacc', 'Forcex', 'Forcey'];
 // Display unit and scale from SI, per signal.
@@ -23,33 +24,17 @@ function meta(name) {
 }
 const tokenOf = name => ({ x: '--x', y: '--y', r: '--fit' })[meta(name).axis];
 
-// Small LRU of parsed files so switching cuts back and forth is instant.
-const fileCache = new Map();
+// Two cache levels: parsed files in memory (instant when switching back and forth), and the raw bytes on
+// disk via filecache.js (fast on later visits). `source` says where this load came from.
+const parsed = new Map();
 async function fetchMat(n, name, onProgress) {
   const key = n + '/' + name;
-  if (fileCache.has(key)) return fileCache.get(key);
-  const res = await fetch(fileUrl(n, name));
-  if (res.status === 404) throw new Error('missing');
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const total = +res.headers.get('content-length') || 0;
-  const reader = res.body.getReader();
-  const chunks = [];
-  let got = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    got += value.length;
-    onProgress?.(got, total);
-  }
-  const buf = new Uint8Array(got);
-  let o = 0;
-  for (const c of chunks) { buf.set(c, o); o += c.length; }
-  const vars = await readMat(buf.buffer);
-  const out = { vars, bytes: got };
-  fileCache.set(key, out);
-  if (fileCache.size > 8) fileCache.delete(fileCache.keys().next().value);
-  return out;
+  if (parsed.has(key)) return { ...parsed.get(key), source: 'memory', ms: 0 };
+  const { buf, source, ms } = await getFile(n, name, onProgress);
+  const out = { vars: await readMat(buf), bytes: buf.byteLength };
+  parsed.set(key, out);
+  if (parsed.size > 8) parsed.delete(parsed.keys().next().value);
+  return { ...out, source, ms };
 }
 
 const fmtNum = v => {
@@ -298,18 +283,20 @@ export function FileView({ index, d, k, theme }) {
     setMode('custom'); setCustom(c);
   };
 
-  // Compare-cut buttons: the deepest predicted-stable and shallowest predicted-chatter cut at this speed.
-  const cuts = useMemo(() => {
-    if (!cut) return [];
+  // Once this file is shown, quietly fetch the next shallower and deeper cut at the same speed, the files
+  // someone exploring a speed column is most likely to open next.
+  useEffect(() => {
+    if (!cur || !cut) return;
     const same = gridHere.grid.filter(c => c[1] === cut[1]).sort((p, q) => p[2] - q[2]);
-    const st = same.filter(c => c[3]).pop(), ch = same.find(c => !c[3]);
-    const list = [st, ch].filter(Boolean);
-    if (!list.includes(cut)) list.push(cut);
-    return list.sort((p, q) => p[2] - q[2]);
-  }, [gridHere, cut]);
+    const i = same.indexOf(cut);
+    const id = setTimeout(() => prefetch(d.n, [same[i + 1], same[i - 1]].filter(Boolean).map(c => 'time' + d.n + '_' + c[0] + '.mat')), 600);
+    return () => clearTimeout(id);
+  }, [cur, cut]);
+  const [stats, setStats] = useState(cacheStats);
+  useEffect(() => { if (cur) setTimeout(() => setStats(cacheStats()), 300); }, [cur]);
 
-  const fam = family(d);
-  const snd = fam.find(n => n >= 126);
+  const snd = family(d).find(n => n >= 126);
+  const deepest = cut && !cut[3];
 
   const exportCsv = () => {
     const cols = [resultant ? 'timenew' : 'time', ...plotted];
@@ -358,17 +345,14 @@ export function FileView({ index, d, k, theme }) {
             <h1>{name}</h1>
             <div class="num" style="font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px">
               {rpm != null && <span>{fmt(rpm)} rpm · b = {+b.toFixed(3)} mm</span>}
-              {stable != null && <strong class={stable ? 'stable-t' : 'chatter-t'}>{stable ? 'below boundary (stable predicted)' : 'above boundary (chatter predicted)'}</strong>}
+              {stable != null && <span><strong class={stable ? 'stable-t' : 'chatter-t'}>{stable ? 'stable' : 'unstable'}</strong>{deepest ? ' (one of the two deepest cuts at this speed)' : ''}</span>}
               <GroupPill group={d.group} />
             </div>
           </div>
         </div>
-        {cuts.length > 1 && (
-          <div class="seg" role="group" aria-label="Compare cut at this speed">
-            {cuts.map(c => <button type="button" {...pressed(c[0] === k)} onClick={() => { location.hash = '#/file/' + d.n + '/' + c[0]; }}>
-              K{c[0]} · {+c[2].toFixed(3)} mm · <span class={c[0] === k ? '' : c[3] ? '' : 'chatter-t'}>{c[3] ? 'stable' : 'chatter'}</span></button>)}
-          </div>
-        )}
+        <a class="tbtn" href={'#/ds/' + d.n + '?k=' + k} style="text-decoration:none;height:40px;font-weight:700">
+          <Icon name="grid" size={18} />Back to grid of cuts
+        </a>
       </div>
 
       <div class="row">
@@ -452,6 +436,7 @@ export function FileView({ index, d, k, theme }) {
               <dt>Duration</dt><dd>{v ? dur.toFixed(3) + ' s · ' + revs + ' revs' : '…'}</dd>
               <dt>Per revolution</dt><dd>{v ? +perRev.toFixed(1) + ' samples (' + +(perRev / d.p.teeth).toFixed(1) + ' per tooth)' : '…'}</dd>
               <dt>File size</dt><dd>{cur ? fmtBytes(cur.bytes) : size ? fmtBytes(size) : '…'}</dd>
+              <dt>Loaded from</dt><dd>{!cur ? '…' : cur.source === 'mirror' ? 'mirror · ' + (cur.ms / 1000).toFixed(1) + ' s' : cur.source === 'cache' ? 'browser cache · ' + Math.round(cur.ms) + ' ms' : 'memory'}</dd>
             </dl>
           </section>
 
@@ -461,29 +446,14 @@ export function FileView({ index, d, k, theme }) {
             <div class="pills">{available.map(s => sigBtn(s, true))}</div>
           </section>
 
-          <section class="card" style="padding:16px 18px">
-            <h2 class="t">Same cut in other datasets</h2>
-            <div style="display:flex;flex-direction:column;gap:8px">
-              {fam.map(n => {
-                const o = index.datasets.find(e => e.n === n);
-                const on = n === d.n;
-                const va = VARIANT[o.group];
-                return (
-                  <a class={'fitem' + (on ? ' on' : '')} href={'#/file/' + n + '/' + k} aria-current={on ? 'page' : undefined}>
-                    <span class="bar" style={{ background: va.color }} />
-                    <div style="flex:1;min-width:0"><div class="fname">time{n}_{k}.mat</div><div class="note">{va.desc}</div></div>
-                    {on && <span style="font-size:12px;font-weight:700;color:var(--ink)">Viewing</span>}
-                  </a>
-                );
-              })}
-            </div>
-          </section>
-
           {snd && <Sound key={snd + '_' + k} n={snd} k={k} fs={fs} rpm={rpm} />}
 
           <section class="card" style="padding:16px 18px">
             <h2 class="t">Source</h2>
             <p class="note" style="margin:0">Streamed from the <a href={MIRROR} target="_blank" rel="noopener">Hugging Face mirror</a> and parsed in your browser. The original is on <a href={KAGGLE} target="_blank" rel="noopener">Kaggle</a> (CC BY-ND 4.0). <a href={fileUrl(d.n, name)}>Download this file</a>.</p>
+            {stats.files > 0 && (
+              <p class="note" style="margin:8px 0 0">Files you open are kept in this browser so they load instantly next time: {stats.files} {stats.files === 1 ? 'file' : 'files'}, {fmtBytes(stats.bytes)} (up to 300 MB). <button type="button" class="linkbtn" style="height:auto;padding:0;font-size:12px" onClick={async () => { await clearCache(); setStats(cacheStats()); }}>Clear</button></p>
+            )}
           </section>
         </aside>
       </div>

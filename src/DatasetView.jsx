@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from './icons.jsx';
+import { prefetch } from './filecache.js';
 import { GROUPS, GroupPill, VARIANT, loadDataset, fmt, fmtBytes, family, immersionOf, dirOf, pitchOf } from './data.js';
 
 const M = { l: 56, r: 24, t: 16, b: 60 }, PH = 420;  // plot margins and total height
@@ -160,24 +161,23 @@ function GridPlot({ d, info, sel, onPick }) {
         onMouseLeave={() => setHover(null)}>
         <defs><clipPath id="gclip"><rect x="0" y="0" width={W} height={H} /></clipPath></defs>
         <g transform={'translate(' + M.l + ' ' + M.t + ')'}>
-          <rect x="0" y="0" width={W} height={H} style={{ fill: 'var(--stable-fill)' }} />
-          <path d={g.path + ' L' + W + ',0 L0,0 Z'} clip-path="url(#gclip)" style={{ fill: 'var(--chatter-fill)' }} />
+          <rect x="0" y="0" width={W} height={H} style={{ fill: 'var(--plot)' }} />
           <g stroke-width="1" style={{ stroke: 'var(--grid)' }}>{g.yt.slice(1).map(v => <path d={'M0 ' + g.Y(v) + 'H' + W} />)}</g>
           <path d={'M0 0V' + H + 'H' + W} fill="none" stroke-width="1" style={{ stroke: 'var(--subtle)' }} />
-          <path d={g.path} fill="none" stroke-width="2.2" stroke-linejoin="round" clip-path="url(#gclip)" style={{ stroke: 'var(--fit)' }} />
+          {/* Reference only: the stability labels come from the grid rule, not from this line. */}
+          <path d={g.path} fill="none" stroke-width="1.6" stroke-linejoin="round" clip-path="url(#gclip)" style={{ stroke: 'var(--subtle)' }} />
           <g text-anchor="end" style={TEXT}>{g.yt.map(v => <text x="-8" y={g.Y(v) + 4}>{v}</text>)}</g>
           <g text-anchor="middle" style={TEXT}>
             {g.xt.map(v => <text x={g.X(v)} y={H + 20}>{fmt(v)}</text>)}
             <text x={W / 2} y={H + 42} style={{ fill: 'var(--ink)' }}>Spindle speed (rpm)</text>
           </g>
-          <text x={W - 12} y="20" text-anchor="end" style={{ ...TEXT, fontSize: '13px', fontWeight: 700, fill: 'var(--chatter-text)' }}>Chatter predicted</text>
           {info.grid.map(c => {
             const [k, om, b, s] = c;
             const on = k === sel;
             const cx = g.X(om), cy = g.Y(b);
             return (
               <g class="pt" key={k} data-k={k} role="button" tabindex={on ? 0 : -1} aria-pressed={on ? 'true' : 'false'}
-                aria-label={'Cut ' + k + ', ' + fmt(om) + ' rpm, ' + b + ' mm, ' + (s ? 'below' : 'above') + ' boundary'}
+                aria-label={'Cut ' + k + ', ' + fmt(om) + ' rpm, ' + b + ' mm, ' + (s ? 'stable' : 'unstable')}
                 onClick={() => onPick(k)} onKeyDown={e => key(e, c)} onMouseEnter={() => setHover(c)} onFocus={() => setHover(c)}>
                 <circle cx={cx} cy={cy} r={g.r + 5} fill="transparent" />
                 {on && <circle cx={cx} cy={cy} r={g.r + 4} fill="none" stroke-width="2.5" style={{ stroke: 'var(--ink)' }} />}
@@ -192,7 +192,7 @@ function GridPlot({ d, info, sel, onPick }) {
       {tip && (
         <div class="hover-tip" style={{ left: tip.left + 'px', top: tip.top + 'px' }}>
           <b>K{hover[0]}</b> · {fmt(hover[1])} rpm · {hover[2]} mm<br />
-          boundary {blimAt(info.boundary, hover[1]).toFixed(2)} mm · {hover[3] ? 'below' : 'above'}
+          {hover[3] ? 'stable' : 'unstable'}
         </div>
       )}
     </div>
@@ -209,7 +209,13 @@ export function DatasetView({ index, d, k }) {
     dirOf(d) + ' milling, ' + fmt(m.fntx) + ' Hz tool mode, ' + String(+(m.ktx / 1e6).toPrecision(4)) + ' N/µm stiffness' +
     (d.p.cn ? ', process damping' : '') + (pitchOf(d) === 'variable' ? ', variable pitch' : '') + (d.p.noise ? ', ' + d.p.noise + '% noise' : '') + '.';
 
-  const sel = info ? (info.grid.find(c => c[0] === k) || info.grid.find(c => !c[3]) || info.grid[0]) : null;
+  const sel = info ? (info.grid.find(c => c[0] === k) || info.grid[0]) : null;
+  // Fetch the selected cut's file in the background once the selection settles, so opening it is instant.
+  useEffect(() => {
+    if (!sel) return;
+    const id = setTimeout(() => prefetch(d.n, ['time' + d.n + '_' + sel[0] + '.mat']), 700);
+    return () => clearTimeout(id);
+  }, [d.n, sel && sel[0]]);
   const pick = kk => { history.replaceState(null, '', '#/ds/' + d.n + '?k=' + kk); dispatchEvent(new HashChangeEvent('hashchange')); };
   const nBelow = info ? info.grid.filter(c => c[3]).length : 0;
   const revs = d.group === 'sound' ? 500 : 60;
@@ -240,15 +246,15 @@ export function DatasetView({ index, d, k }) {
         <main class="main">
           <section class="card" style="padding:18px 20px">
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 24px;margin-bottom:8px">
-              <h2 class="h2" style="font-size:16px">Grid of cuts vs. stability boundary</h2>
+              <h2 class="h2" style="font-size:16px">Grid of cuts</h2>
               <div class="legend" style="margin-left:auto">
-                <span><span class="dot" style="width:11px;height:11px;background:var(--accent)" />below boundary ({nBelow})</span>
-                <span><span class="dot" style="width:11px;height:11px;border:2px solid var(--chatter);background:var(--surface);box-sizing:border-box" />above boundary ({info ? info.grid.length - nBelow : 0})</span>
-                <span><span style="width:18px;height:0;border-top:2px solid var(--fit)" />stability_boundary{d.n}.mat</span>
+                <span><span class="dot" style="width:11px;height:11px;background:var(--accent)" />stable ({nBelow})</span>
+                <span><span class="dot" style="width:11px;height:11px;border:2px solid var(--chatter);background:var(--surface);box-sizing:border-box" />unstable ({info ? info.grid.length - nBelow : 0})</span>
+                <span><span style="width:18px;height:0;border-top:1.6px solid var(--subtle)" />analytical boundary (reference)</span>
               </div>
             </div>
             {error ? <div class="err">{error}</div> : info ? <GridPlot d={d} info={info} sel={sel[0]} onPick={pick} /> : <div class="skel" style={{ height: PH + 'px' }} />}
-            <p class="note" style="margin:8px 0 0">Colors compare each cut with the analytical boundary. The files themselves are unlabelled, and the time-domain result can differ, especially with process damping or variable pitch. Click a cut, or use the arrow keys.</p>
+            <p class="note" style="margin:8px 0 0">The files carry no stability label. Following the dataset documentation, the grid at each spindle speed runs to about two unstable cuts, so the two deepest cuts at each speed are marked unstable. The line is the analytical boundary from stability_boundary{d.n}.mat, shown for reference only. Click a cut, or use the arrow keys.</p>
           </section>
           {sel && <SelectedCut d={d} info={info} c={sel} index={index} />}
         </main>
@@ -273,8 +279,9 @@ function SelectedCut({ d, info, c, index }) {
       <div style="flex:1 1 260px">
         <div class="cap" style="color:var(--link);letter-spacing:0.8px">Selected cut · K = {k}</div>
         <div class="num" style="font-size:26px;font-weight:700;color:var(--ink);margin:6px 0 4px">{fmt(om)} rpm · {b} mm</div>
-        <div style="font-size:14px;color:var(--muted);line-height:1.45">Boundary at this speed: {blimAt(info.boundary, om).toFixed(2)} mm<br />
-          <strong class={s ? 'stable-t' : 'chatter-t'}>{s ? 'Below boundary (stable predicted)' : 'Above boundary (chatter predicted)'}</strong></div>
+        <div style="font-size:14px;color:var(--muted);line-height:1.45">
+          <strong class={s ? 'stable-t' : 'chatter-t'}>{s ? 'Stable' : 'Unstable'}</strong>{s ? '' : ': one of the two deepest cuts at ' + fmt(om) + ' rpm'}<br />
+          Analytical boundary here: {blimAt(info.boundary, om).toFixed(2)} mm (reference)</div>
         <a class="btn" href={'#/file/' + d.n + '/' + k} style="margin-top:14px">Open in file viewer →</a>
         {size && <div class="note" style="margin-top:8px">time{d.n}_{k}.mat · {fmtBytes(size)}</div>}
       </div>
