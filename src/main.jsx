@@ -40,7 +40,6 @@ function Header({ route, index, last, theme, setTheme }) {
     <header class="hdr">
       <div class="hdr-in">
         <a class="brand" href="#/">
-          <div class="mark"><Icon name="stability" size={22} /></div>
           <div>
             <div class="brand-t">Machining Database Explorer</div>
             <div class="brand-s">Digital Machining Database · Kaggle v17 · Hugging Face mirror</div>

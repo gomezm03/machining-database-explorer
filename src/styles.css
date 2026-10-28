@@ -27,7 +27,6 @@ code { font-family: Consolas, 'Courier New', monospace; font-size: 0.95em; }
 .hdr-in { max-width: 1440px; margin: 0 auto; padding: 12px 32px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
 .brand { display: flex; align-items: center; gap: 12px; color: var(--chrome-fg); text-decoration: none; }
 .brand:hover { color: var(--chrome-fg); }
-.mark { width: 36px; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.14); display: flex; align-items: center; justify-content: center; }
 .brand-t { font-size: 17px; font-weight: 700; letter-spacing: 0.2px; }
 .brand-s { font-size: 12px; color: var(--chrome-muted); }
 .nav { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -245,7 +244,6 @@ pre.code { margin: 0; background: var(--code-bg); color: var(--code-fg); border-
   /* Header: brand and an icon-only theme picker on one row, the three tabs on the next. */
   .hdr-in { padding-top: 8px; padding-bottom: 6px; gap: 4px 12px; }
   .brand { flex: 1 1 0; min-width: 0; gap: 10px; }
-  .mark { width: 32px; height: 32px; }
   .brand-t { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .brand-s { display: none; }
   .hdr-r { order: 2; margin-left: 0; gap: 12px; }
