@@ -249,17 +249,25 @@ export function FileView({ index, d, k, theme }) {
   const [custom, setCustom] = useState(['xtpos', 'Forcey']);
   const [win, setWin] = useState(undefined);  // undefined = default (last 4 revs), null = whole record
 
+  // Results are tagged with the file they belong to: while the next file loads, the component re-renders
+  // with the new route before the effect runs, and must never pair the new dataset with the old data.
+  const key = d.n + '/' + k;
   useEffect(() => {
     let live = true;
-    setFile(null); setError(null); setProgress(null); setWin(undefined);
-    fetchMat(d.n, name, (got, total) => live && setProgress([got, total])).then(f => live && setFile(f), e => live && setError(e.message));
+    setError(null); setProgress(null); setWin(undefined);
+    fetchMat(d.n, name, (got, total) => live && setProgress([got, total]))
+      .then(f => live && setFile({ ...f, key }), e => live && setError({ key, message: e.message }));
     loadDataset(d.n).then(g => live && setGrid(g));
     return () => { live = false; };
-  }, [d.n, k]);
+  }, [key]);
 
-  const cut = grid?.grid.find(c => c[0] === k);
-  const size = grid && cut ? grid.size[grid.grid.indexOf(cut)] : 0;
-  const v = file?.vars;
+  const gridHere = grid && grid.n === d.n ? grid : null;
+  const cut = gridHere?.grid.find(c => c[0] === k);
+  const noCut = gridHere && !cut;
+  const size = cut ? gridHere.size[gridHere.grid.indexOf(cut)] : 0;
+  const cur = file && file.key === key ? file : null;
+  const err = noCut ? 'nocut' : error && error.key === key ? error.message : null;
+  const v = err ? null : cur?.vars;
   const t = v ? (v.time || v.timenew).data : null;
   const rpm = v ? v.omega.data[0] : cut?.[1];
   const b = v ? v.b.data[0] * 1000 : cut?.[2];
@@ -292,13 +300,13 @@ export function FileView({ index, d, k, theme }) {
 
   // Compare-cut buttons: the deepest predicted-stable and shallowest predicted-chatter cut at this speed.
   const cuts = useMemo(() => {
-    if (!grid || !cut) return [];
-    const same = grid.grid.filter(c => c[1] === cut[1]).sort((p, q) => p[2] - q[2]);
+    if (!cut) return [];
+    const same = gridHere.grid.filter(c => c[1] === cut[1]).sort((p, q) => p[2] - q[2]);
     const st = same.filter(c => c[3]).pop(), ch = same.find(c => !c[3]);
     const list = [st, ch].filter(Boolean);
     if (!list.includes(cut)) list.push(cut);
     return list.sort((p, q) => p[2] - q[2]);
-  }, [grid, cut]);
+  }, [gridHere, cut]);
 
   const fam = family(d);
   const snd = fam.find(n => n >= 126);
@@ -400,11 +408,13 @@ export function FileView({ index, d, k, theme }) {
             </section>
           )}
 
-          {error ? (
+          {err ? (
             <div class="err">
-              {error === 'missing'
-                ? <>This file is not on the Hugging Face mirror yet: the full upload is still running. Try <a href="#/file/1/34">time1_34.mat</a>, or get it from <a href={KAGGLE} target="_blank" rel="noopener">Kaggle</a>.</>
-                : <>Could not load {name}: {error}</>}
+              {err === 'nocut'
+                ? <>Dataset {d.n} has no cut K = {k}: its cuts are numbered 1 to {fmt(d.files)}. <a href={'#/ds/' + d.n}>Pick one on the grid of cuts</a>.</>
+                : err === 'missing'
+                  ? <>This file is not on the Hugging Face mirror yet: the full upload is still running. Try <a href="#/file/1/34">time1_34.mat</a>, or get it from <a href={KAGGLE} target="_blank" rel="noopener">Kaggle</a>.</>
+                  : <>Could not load {name}: {err}</>}
             </div>
           ) : !v ? (
             <>
@@ -441,7 +451,7 @@ export function FileView({ index, d, k, theme }) {
               <dt>Sample rate</dt><dd>{v ? fmt(Math.round(fs)) + ' Hz' : '…'}</dd>
               <dt>Duration</dt><dd>{v ? dur.toFixed(3) + ' s · ' + revs + ' revs' : '…'}</dd>
               <dt>Per revolution</dt><dd>{v ? +perRev.toFixed(1) + ' samples (' + +(perRev / d.p.teeth).toFixed(1) + ' per tooth)' : '…'}</dd>
-              <dt>File size</dt><dd>{file ? fmtBytes(file.bytes) : size ? fmtBytes(size) : '…'}</dd>
+              <dt>File size</dt><dd>{cur ? fmtBytes(cur.bytes) : size ? fmtBytes(size) : '…'}</dd>
             </dl>
           </section>
 

@@ -56,6 +56,16 @@ const toHex = rgb => '#' + rgb.map(v => Math.round(Math.max(0, Math.min(255, v))
 /** `a` moved a fraction `t` of the way toward `b` (Tap Test's mix). */
 export const mix = (a, b, t) => { const p = hex(a), q = hex(b); return toHex(p.map((v, i) => v + (q[i] - v) * t)); };
 
+const lum = c => hex(c).map(v => v / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+  .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+export const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+/** `fg` moved toward black (or white on dark backgrounds) just far enough to reach `target` contrast on `bg`. */
+function readable(fg, bg, target = 4.5) {
+  const to = lum(bg) > 0.4 ? '#000000' : '#FFFFFF';
+  for (let t = 0; t <= 1; t += 0.02) { const c = mix(fg, to, t); if (contrast(c, bg) >= target) return c; }
+  return to;
+}
+
 /** Every CSS custom property the screens use, from one theme. */
 export function tokens(t) {
   const strong = mix(t.accent, '#000000', 0.22);  // filled buttons: the accent darkened so white text reads
@@ -63,7 +73,9 @@ export function tokens(t) {
   return {
     '--chrome': chrome,
     '--chrome-fg': '#FFFFFF',
-    '--chrome-muted': mix(chrome, '#FFFFFF', 0.72),
+    '--chrome-muted': readable(mix(chrome, '#FFFFFF', 0.72), chrome),
+    // Accent used as text (links, labels) keeps the hue but is darkened until it reads at 4.5:1.
+    '--link': readable(t.accent, t.surface),
     '--bg': t.window, '--surface': t.surface, '--plot': t.plot,
     '--panel': mix(t.surface, t.text, t.dark ? 0.05 : 0.025),
     '--ink': t.text, '--muted': t.muted, '--subtle': t.subtle,
@@ -77,7 +89,8 @@ export function tokens(t) {
     '--stable-fill': mix(t.plot, t.accent, t.dark ? 0.16 : 0.1),
     '--chatter': t.unstable,
     '--chatter-fill': mix(t.plot, t.unstable, t.unstableAlpha * (t.dark ? 0.28 : 0.55)),
-    '--chatter-text': t.dark ? mix(t.unstable, '#FFFFFF', 0.25) : mix(t.unstable, '#000000', 0.25),
+    '--chatter-text': readable(t.dark ? mix(t.unstable, '#FFFFFF', 0.25) : mix(t.unstable, '#000000', 0.25), t.surface),
+    '--muted-r': readable(t.muted, t.window),
     '--code-bg': t.dark ? mix(t.window, '#000000', 0.3) : mix(t.text, '#000000', 0.25),
     '--code-fg': '#E6ECF8',
     '--warn-text': t.warnText, '--warn-bg': t.warnBg, '--warn-border': t.warnBorder,

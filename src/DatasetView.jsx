@@ -271,7 +271,7 @@ function SelectedCut({ d, info, c, index }) {
   return (
     <section class="card" aria-live="polite" style="padding:18px 20px;display:flex;flex-wrap:wrap;gap:20px 32px">
       <div style="flex:1 1 260px">
-        <div class="cap" style="color:var(--accent);letter-spacing:0.8px">Selected cut · K = {k}</div>
+        <div class="cap" style="color:var(--link);letter-spacing:0.8px">Selected cut · K = {k}</div>
         <div class="num" style="font-size:26px;font-weight:700;color:var(--ink);margin:6px 0 4px">{fmt(om)} rpm · {b} mm</div>
         <div style="font-size:14px;color:var(--muted);line-height:1.45">Boundary at this speed: {blimAt(info.boundary, om).toFixed(2)} mm<br />
           <strong class={s ? 'stable-t' : 'chatter-t'}>{s ? 'Below boundary (stable predicted)' : 'Above boundary (chatter predicted)'}</strong></div>
