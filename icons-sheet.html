@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Icon sheet (dev only)</title>
+<style>
+body { margin: 0; padding: 24px; font-family: Arial, sans-serif; background: #fff; color: #1B2433; }
+.grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.cell { border: 1px solid #DDE3EE; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.sizes { display: flex; align-items: flex-end; gap: 12px; }
+.big { background-image: linear-gradient(#EEF2F8 1px, transparent 1px), linear-gradient(90deg, #EEF2F8 1px, transparent 1px); background-size: 4px 4px; }
+.name { font-size: 12px; font-weight: 700; }
+</style></head>
+<body><div id="app"></div>
+<script type="module">
+import { h, render } from 'preact';
+import { Icon, ICON_NAMES } from '/src/icons.jsx';
+const names = new URLSearchParams(location.search).get('only')?.split(',') || ICON_NAMES;
+render(h('div', { class: 'grid' }, names.map(n => h('div', { class: 'cell' },
+  h('div', { class: 'sizes' },
+    h('span', { class: 'big' }, h(Icon, { name: n, size: 72, color: '#012169' })),
+    h(Icon, { name: n, size: 24, color: '#012169' }),
+    h(Icon, { name: n, size: 18, color: '#4A5468' }),
+    h(Icon, { name: n, size: 16, color: '#0057B8' })),
+  h('span', { class: 'name' }, n)))), document.getElementById('app'));
+</script></body></html>

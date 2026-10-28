@@ -1,3 +1,11 @@
+// One curved flute of an end mill seen from below, rotated `deg` about the centre. Coordinates are computed
+// rather than using an SVG transform, so every renderer draws them the same.
+function flute(deg) {
+  const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  const pt = (x, y) => { const dx = x - 12, dy = y - 12; return (12 + dx * c - dy * s).toFixed(2) + ' ' + (12 + dx * s + dy * c).toFixed(2); };
+  return 'M' + pt(12, 12) + 'C' + pt(14.4, 10.4) + ' ' + pt(14.9, 7.4) + ' ' + pt(13.4, 3.6);
+}
+
 // 24 px grid, 1.75 px round stroke. Legacy Tap Test icons (Tap Testing/icons/svg) plus new ones from the icon artboard.
 
 const P = {
@@ -16,15 +24,20 @@ const P = {
   home: <><path d="M3.5 10.5L12 3.5l8.5 7" /><path d="M5.5 9v11h13V9" /><path d="M10 20v-5.5h4V20" /></>,
   help: <><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.6.25-1 .8-1 1.45v.65" /><circle cx="12" cy="16.75" r="1" fill="currentColor" stroke="none" /></>,
   sensor: <><rect x="4.5" y="9.5" width="9" height="7.5" rx="1.5" /><path d="M13.5 13.25h2.5c2 0 3-1 3-3V4" /><path d="M9 9.5V3.5M7 5.5l2-2 2 2" /><path d="M4 20.5h10" /><path d="M9 17v3.5" /></>,
-  force: <><path d="M3 20h18" /><path d="M5 5l8.5 8.5" /><path d="M14 8.5v5.5H8.5" /></>,
+  // Force model: the milling force pulse train (one pulse per tooth pass), from the Time Domain glyph without its axes.
+  // Partial immersion: zero force between tooth passes, so each pulse sits on a flat baseline.
+  force: <path d="M3 17.75h1.2c1.2-1.9 2.2-6.6 2.8-10.5v10.5h2.6c1.2-1.9 2.2-6.6 2.8-10.5v10.5h2.6c1.2-1.9 2.2-6.6 2.8-10.5v10.5H21" />,
   cut: <><path d="M3 20h18V10h-7v4H3z" /><path d="M3 6h7M8 4l2 2-2 2" /></>,
   group: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></>,
-  grid: <><path d="M3.5 3.5v17h17" /><circle cx="7.5" cy="16.5" r="1.2" /><circle cx="7.5" cy="12.5" r="1.2" /><circle cx="12" cy="16.5" r="1.2" /><circle cx="12" cy="12.5" r="1.2" /><circle cx="12" cy="8.5" r="1.2" /><circle cx="16.5" cy="16.5" r="1.2" /><circle cx="16.5" cy="12.5" r="1.2" /><circle cx="16.5" cy="8.5" r="1.2" /><circle cx="16.5" cy="4.5" r="1.2" /></>,
+  // Grid of cuts: a few solid points (speed × depth) on the plot axes; solid fills stay crisp at 16 px.
+  grid: <><path d="M3.5 3.5v17h17" /><g fill="currentColor" stroke="none"><circle cx="8" cy="16" r="1.45" /><circle cx="8" cy="11.5" r="1.45" /><circle cx="12.5" cy="16" r="1.45" /><circle cx="12.5" cy="11.5" r="1.45" /><circle cx="12.5" cy="7" r="1.45" /><circle cx="17" cy="16" r="1.45" /><circle cx="17" cy="11.5" r="1.45" /></g></>,
   spectrum: <><path d="M3.5 20.5h17" /><path d="M6.5 20.5v-4M9.5 20.5v-10M12.5 20.5v-6M15.5 20.5v-14M18.5 20.5v-3" /></>,
   sound: <><path d="M4 9h4l5-4v14l-5-4H4z" /><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" /></>,
-  teeth: <><circle cx="12" cy="12" r="6.5" /><path d="M12 5.5V2.5M18.5 12h3M12 18.5v3M5.5 12h-3" /></>,
-  varpitch: <><circle cx="12" cy="12" r="6.5" /><path d="M12 5.5V2.5M18.4 13.1l3 .5M12.6 18.5l.3 3M5.5 12h-3" /></>,
-  runout: <><circle cx="12" cy="12" r="7" stroke-dasharray="2 2.5" /><circle cx="13.5" cy="11" r="7" /></>,
+  // Teeth: end mill seen from below, four curved flutes evenly spaced. Variable pitch: the same, unevenly spaced.
+  teeth: <><circle cx="12" cy="12" r="8.5" /><path d={[0, 90, 180, 270].map(flute).join('')} /></>,
+  varpitch: <><circle cx="12" cy="12" r="8.5" /><path d={[0, 55, 180, 250].map(flute).join('')} /></>,
+  // Runout: the nominal tool circle (dotted) and the actual one, shifted off-axis, with its centre.
+  runout: <><circle cx="10.8" cy="12" r="7.2" stroke-dasharray="0 3.6" /><circle cx="13.2" cy="12" r="7.2" /><circle cx="13.2" cy="12" r="1.25" fill="currentColor" stroke="none" /></>,
   damping: <path d="M2 12c1.5-8 3-8 4.5 0s2.5 5 3.5 0 2-3.5 3 0 1.5 2 2.5 0 1-1 1.5 0H22" />,
   noise: <path d="M2 12h3l1.5-4 2 8 2-10 2 12 2-8 1.5 4 1-2h6" />,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></>,
@@ -33,6 +46,8 @@ const P = {
   chevron: <path d="M6.5 9.5L12 15l5.5-5.5" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
 };
+
+export const ICON_NAMES = Object.keys(P);
 
 // `color` may be a CSS value such as 'var(--accent)'; it is applied as CSS so theme tokens resolve.
 export function Icon({ name, size = 20, color, stroke = 1.75, label, style }) {
