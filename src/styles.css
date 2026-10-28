@@ -138,7 +138,14 @@ dl.kv dd { margin: 0; font-weight: 700; text-align: right; font-variant-numeric:
 .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); }
 .legend > span { display: flex; align-items: center; gap: 6px; }
 .gridwrap { position: relative; overflow-x: auto; }
-.gridplot { display: block; min-width: 560px; user-select: none; }
+/* touch-action keeps one-finger scrolling for the page but hands two-finger pinches to the plot. */
+.gridplot { display: block; min-width: 560px; user-select: none; touch-action: pan-x pan-y; cursor: crosshair; }
+.gridplot.dragging, .gridplot.dragging .pt { cursor: crosshair; }
+.zoombar { position: absolute; z-index: 2; display: flex; gap: 4px; }
+.zoombar button { min-width: 32px; height: 32px; padding: 0 10px; border: 1px solid var(--field); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: var(--shadow); }
+.zoombar button.reset { font-size: 13px; }
+.zoombar button:hover:not(:disabled) { border-color: var(--accent); }
+.zoombar button:disabled { opacity: 0.4; }
 .pt { cursor: pointer; outline: none; }
 .pt:focus-visible circle { stroke: var(--ink); stroke-width: 3; }
 .hover-tip { position: absolute; z-index: 3; pointer-events: none; transform: translate(-50%, calc(-100% - 12px)); background: var(--ink); color: var(--surface); font-size: 12px; line-height: 1.4; padding: 6px 9px; border-radius: 6px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }

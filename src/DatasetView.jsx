@@ -10,11 +10,6 @@ function niceStep(max) {
   for (const s of [1, 2, 4, 5, 10, 20]) if (max / s <= 9) return s;
   return 50;
 }
-function niceSpeedStep(span, width) {
-  const n = Math.max(3, Math.floor(width / 110));
-  for (const s of [500, 1000, 2000, 2500, 5000, 10000]) if (span / s <= n) return s;
-  return 20000;
-}
 
 export function blimAt(boundary, om) {
   const x = boundary.om, y = boundary.b;
@@ -108,23 +103,39 @@ function neighbour(grid, cur, key) {
   return grid.filter(c => c[1] === s).reduce((best, c) => Math.abs(c[2] - b) < Math.abs(best[2] - b) ? c : best);
 }
 
+// Tick values from lo to hi at a 1/2/2.5/5 × 10^n step giving about `n` ticks.
+function ticks(lo, hi, n) {
+  const raw = (hi - lo) / Math.max(1, n);
+  const p = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(s => s >= raw) || 10 * p;
+  const out = [];
+  for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + 1e-9; v += step) out.push(+v.toPrecision(10));
+  return out;
+}
+const tickLabel = v => Math.abs(v) >= 1000 ? fmt(Math.round(v)) : String(+v.toFixed(3));
+
 function GridPlot({ d, info, sel, onPick }) {
-  const wrap = useRef();
+  const wrap = useRef(), svg = useRef();
   const [width, setWidth] = useState(836);
   const [hover, setHover] = useState(null);
+  const [view, setView] = useState(null);     // null = whole grid; else { x0, x1, y0, y1 } in rpm and mm
+  const [drag, setDrag] = useState(null);     // box being drawn, in plot pixels
   const focusK = useRef(null);
+  const pinch = useRef(null);
   useLayoutEffect(() => {
     const el = wrap.current;
     const ro = new ResizeObserver(() => setWidth(Math.max(560, el.clientWidth)));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  useEffect(() => { setView(null); setHover(null); }, [info]);
   useEffect(() => {
     if (focusK.current != null) { wrap.current.querySelector('[data-k="' + focusK.current + '"]')?.focus(); focusK.current = null; }
   });
 
   const W = width - M.l - M.r, H = PH - M.t - M.b;
-  const g = useMemo(() => {
+  // Full extent of the grid: every speed, and from 0 to a little above the deepest cut.
+  const base = useMemo(() => {
     const om = info.grid.map(c => c[1]);
     const bo = info.boundary;
     const x0 = Math.min(bo.om[0], ...om), x1 = Math.max(bo.om[bo.om.length - 1], ...om);
@@ -132,53 +143,181 @@ function GridPlot({ d, info, sel, onPick }) {
     const lmax = Math.max(...bo.b.filter((v, i) => bo.om[i] >= x0 && bo.om[i] <= x1));
     const want = Math.max(bmax * 1.08, Math.min(lmax, bmax * 1.6));
     const ystep = niceStep(want);
-    const top = Math.ceil(want / ystep) * ystep;
+    return { x0, x1, y0: 0, y1: Math.ceil(want / ystep) * ystep };
+  }, [info]);
+  // Zoom no tighter than about four speed steps by four depth steps (neighbours stay in view), never outside the grid.
+  const minX = 4 * (d.p.omStep || 500), minY = 4 * (d.p.bStep || 0.001) * 1000;
+  const clampView = v => {
+    if (!v) return null;
+    let { x0, x1, y0, y1 } = v;
+    if (x1 - x0 < minX) { const c = (x0 + x1) / 2; x0 = c - minX / 2; x1 = c + minX / 2; }
+    if (y1 - y0 < minY) { const c = (y0 + y1) / 2; y0 = c - minY / 2; y1 = c + minY / 2; }
+    const bw = base.x1 - base.x0, bh = base.y1 - base.y0;
+    if (x1 - x0 >= bw && y1 - y0 >= bh) return null;
+    if (x1 - x0 > bw) { x0 = base.x0; x1 = base.x1; }
+    if (y1 - y0 > bh) { y0 = base.y0; y1 = base.y1; }
+    if (x0 < base.x0) { x1 += base.x0 - x0; x0 = base.x0; }
+    if (x1 > base.x1) { x0 -= x1 - base.x1; x1 = base.x1; }
+    if (y0 < base.y0) { y1 += base.y0 - y0; y0 = base.y0; }
+    if (y1 > base.y1) { y0 -= y1 - base.y1; y1 = base.y1; }
+    return { x0, x1, y0, y1 };
+  };
+  const cur = view || base;
+
+  const g = useMemo(() => {
+    const { x0, x1, y0, y1 } = cur;
     const X = v => (v - x0) / (x1 - x0) * W;
-    const Y = v => H - Math.min(v, top) / top * H;
-    const path = 'M' + bo.om.map((o, i) => X(o).toFixed(1) + ',' + Y(bo.b[i]).toFixed(1)).join(' L');
-    const speeds = new Set(om).size;
-    const depths = new Set(info.grid.map(c => c[2])).size;
-    const r = Math.max(2.6, Math.min(6.5, Math.min(W / speeds, H / Math.max(depths, 1)) * 0.36));
-    const yt = [];
-    for (let v = 0; v <= top + 1e-9; v += ystep) yt.push(v);
-    const xs = niceSpeedStep(x1 - x0, W), xt = [];
-    for (let v = Math.ceil(x0 / xs) * xs; v <= x1 + 1e-9; v += xs) xt.push(v);
-    return { X, Y, path, r, yt, xt, x0, x1 };
-  }, [info, W, H]);
+    const Y = v => H - (v - y0) / (y1 - y0) * H;
+    const bo = info.boundary;
+    const path = 'M' + bo.om.map((o, i) => X(o).toFixed(1) + ',' + Math.max(-50, Math.min(H + 50, Y(bo.b[i]))).toFixed(1)).join(' L');
+    // Only points inside the view are drawn; their size follows how many speeds and depths are visible.
+    const padX = (x1 - x0) * 0.01, padY = (y1 - y0) * 0.01;
+    const vis = info.grid.filter(c => c[1] >= x0 - padX && c[1] <= x1 + padX && c[2] >= y0 - padY && c[2] <= y1 + padY);
+    const speeds = new Set(vis.map(c => c[1])).size || 1;
+    const depths = new Set(vis.map(c => c[2])).size || 1;
+    const r = Math.max(2.6, Math.min(view ? 9 : 6.5, Math.min(W / speeds, H / depths) * 0.36));
+    return { X, Y, path, r, vis, yt: ticks(y0, y1, 8), xt: ticks(x0, x1, Math.max(3, Math.floor(W / 110))) };
+  }, [info, W, H, cur.x0, cur.x1, cur.y0, cur.y1]);
+
+  const toData = (px, py) => ({ x: cur.x0 + px / W * (cur.x1 - cur.x0), y: cur.y0 + (H - py) / H * (cur.y1 - cur.y0) });
+  const local = e => { const r = svg.current.getBoundingClientRect(); return { px: e.clientX - r.left - M.l, py: e.clientY - r.top - M.t }; };
+  const zoomBy = (f, center) => {
+    const c = center || (() => { const s = info.grid.find(p => p[0] === sel); return s && s[1] >= cur.x0 && s[1] <= cur.x1 && s[2] >= cur.y0 && s[2] <= cur.y1 ? { x: s[1], y: s[2] } : { x: (cur.x0 + cur.x1) / 2, y: (cur.y0 + cur.y1) / 2 }; })();
+    const hw = (cur.x1 - cur.x0) / 2 / f, hh = (cur.y1 - cur.y0) / 2 / f;
+    setView(clampView({ x0: c.x - hw, x1: c.x + hw, y0: c.y - hh, y1: c.y + hh }));
+  };
+
+  // Mouse and pen: drag a box to zoom (a flat box zooms speed only, a tall one depth only). Touch: pinch.
+  // A drag may start on a point (dense grids are mostly points); only a real drag zooms, a plain click selects.
+  const dragRef = useRef(null), justDragged = useRef(false);
+  const finishDrag = dr => {
+    const dx = Math.abs(dr.x1 - dr.x0), dy = Math.abs(dr.y1 - dr.y0);
+    if (dx < 8 && dy < 8) return;
+    justDragged.current = true;
+    setTimeout(() => { justDragged.current = false; }, 0);
+    const a = toData(Math.min(dr.x0, dr.x1), Math.max(dr.y0, dr.y1)), b = toData(Math.max(dr.x0, dr.x1), Math.min(dr.y0, dr.y1));
+    setView(clampView({
+      x0: dx >= 8 ? a.x : cur.x0, x1: dx >= 8 ? b.x : cur.x1,
+      y0: dy >= 8 ? a.y : cur.y0, y1: dy >= 8 ? b.y : cur.y1,
+    }));
+  };
+  const onDown = e => {
+    if (e.target.closest('.zoombar') || e.pointerType === 'touch') return;
+    if (e.button !== 0) return;
+    const p = local(e);
+    if (p.px < 0 || p.px > W || p.py < 0 || p.py > H) return;
+    e.preventDefault();  // no text selection or native drag while drawing the box
+    // Track the drag on the window (not with pointer capture), so a click on a point still reaches the point.
+    dragRef.current = { x0: p.px, y0: p.py, x1: p.px, y1: p.py };
+    const move = ev => {
+      const q = local(ev);
+      dragRef.current = { ...dragRef.current, x1: Math.max(0, Math.min(W, q.px)), y1: Math.max(0, Math.min(H, q.py)) };
+      const dr = dragRef.current;
+      if (Math.abs(dr.x1 - dr.x0) >= 4 || Math.abs(dr.y1 - dr.y0) >= 4) { setDrag(dr); setHover(null); }
+    };
+    const up = () => {
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', up);
+      const dr = dragRef.current;
+      dragRef.current = null;
+      setDrag(null);
+      if (dr) finishDrag(dr);
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+  };
+  // Pinch uses touch events, not pointer events: with two fingers down we call preventDefault so the browser
+  // does not turn the gesture into a page scroll (which would cancel pointer events). One finger still scrolls.
+  const live = useRef();
+  live.current = { cur, toData, clampView, W, H };
+  useEffect(() => {
+    const el = svg.current;
+    const pts = t => { const r = el.getBoundingClientRect(); return [...t].slice(0, 2).map(p => ({ px: p.clientX - r.left - M.l, py: p.clientY - r.top - M.t })); };
+    const start = e => {
+      if (e.touches.length !== 2) return;
+      e.preventDefault();
+      const [a, b] = pts(e.touches), L = live.current;
+      pinch.current = { dist: Math.hypot(a.px - b.px, a.py - b.py) || 1, mid: L.toData((a.px + b.px) / 2, (a.py + b.py) / 2), view: L.cur };
+    };
+    const move = e => {
+      const pc = pinch.current;
+      if (!pc || e.touches.length !== 2) return;
+      e.preventDefault();
+      const [a, b] = pts(e.touches), L = live.current;
+      const f = Math.hypot(a.px - b.px, a.py - b.py) / pc.dist;
+      const v = pc.view, mx = (a.px + b.px) / 2, my = (a.py + b.py) / 2;
+      const sx = (v.x1 - v.x0) / f, sy = (v.y1 - v.y0) / f;
+      // Keep the data point that started under the fingers' midpoint under it as they move.
+      const x0 = pc.mid.x - mx / L.W * sx, y0 = pc.mid.y - (L.H - my) / L.H * sy;
+      setView(L.clampView({ x0, x1: x0 + sx, y0, y1: y0 + sy }));
+    };
+    const end = e => { if (e.touches.length < 2) pinch.current = null; };
+    el.addEventListener('touchstart', start, { passive: false });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    return () => {
+      el.removeEventListener('touchstart', start); el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', end);
+    };
+  }, []);
 
   const key = (e, c) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(c[0]); return; }
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBy(2, { x: c[1], y: c[2] }); return; }
+    if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomBy(0.5, { x: c[1], y: c[2] }); return; }
+    if (e.key === '0') { e.preventDefault(); setView(null); return; }
     if (!e.key.startsWith('Arrow')) return;
     e.preventDefault();
     const nb = neighbour(info.grid, c, e.key);
-    if (nb) { focusK.current = nb[0]; onPick(nb[0]); setHover(nb); }
+    if (!nb) return;
+    // Walking off the edge of a zoomed view pans it to keep the new cut in sight.
+    if (view && (nb[1] < cur.x0 || nb[1] > cur.x1 || nb[2] < cur.y0 || nb[2] > cur.y1)) {
+      const hw = (cur.x1 - cur.x0) / 2, hh = (cur.y1 - cur.y0) / 2;
+      setView(clampView({ x0: nb[1] - hw, x1: nb[1] + hw, y0: nb[2] - hh, y1: nb[2] + hh }));
+    }
+    focusK.current = nb[0]; onPick(nb[0]); setHover(nb);
   };
-  const tip = hover && { left: M.l + g.X(hover[1]), top: M.t + g.Y(hover[2]) - g.r };
+  const inView = c => c && c[1] >= cur.x0 && c[1] <= cur.x1 && c[2] >= cur.y0 && c[2] <= cur.y1;
+  const tip = hover && inView(hover) && !drag && { left: M.l + g.X(hover[1]), top: M.t + g.Y(hover[2]) - g.r };
+  const selCut = info.grid.find(c => c[0] === sel);
+  // The selected cut stays focusable even when zoomed out of view, so keyboard users never lose their place.
+  const drawn = selCut && !g.vis.includes(selCut) ? [...g.vis, selCut] : g.vis;
 
   return (
     <div class="gridwrap" ref={wrap}>
-      <svg class="gridplot" width={width} height={PH} viewBox={'0 0 ' + width + ' ' + PH} role="group" aria-label={'Grid of cuts of dataset ' + d.n + ' over the stability boundary, ' + fmt(g.x0) + ' to ' + fmt(g.x1) + ' rpm. Use arrow keys to move between cuts.'}
-        onMouseLeave={() => setHover(null)}>
+      <div class="zoombar" role="group" aria-label="Zoom" style={{ right: M.r + 6 + 'px', top: M.t + 6 + 'px' }}>
+        <button type="button" onClick={() => zoomBy(2)} aria-label="Zoom in" title="Zoom in (+)">+</button>
+        <button type="button" onClick={() => zoomBy(0.5)} disabled={!view} aria-label="Zoom out" title="Zoom out (−)">−</button>
+        {view && <button type="button" class="reset" onClick={() => setView(null)} title="Show the whole grid (0)">Reset zoom</button>}
+      </div>
+      <svg ref={svg} class={'gridplot' + (drag ? ' dragging' : '')} width={width} height={PH} viewBox={'0 0 ' + width + ' ' + PH} role="group"
+        aria-label={'Grid of cuts of dataset ' + d.n + ', ' + fmt(Math.round(cur.x0)) + ' to ' + fmt(Math.round(cur.x1)) + ' rpm' + (view ? ' (zoomed)' : '') + '. Use arrow keys to move between cuts, plus and minus to zoom.'}
+        onMouseLeave={() => setHover(null)} onPointerDown={onDown}
+        onDblClick={e => { if (!e.target.closest('.zoombar')) setView(null); }}>
         <defs><clipPath id="gclip"><rect x="0" y="0" width={W} height={H} /></clipPath></defs>
         <g transform={'translate(' + M.l + ' ' + M.t + ')'}>
           <rect x="0" y="0" width={W} height={H} style={{ fill: 'var(--plot)' }} />
-          <g stroke-width="1" style={{ stroke: 'var(--grid)' }}>{g.yt.slice(1).map(v => <path d={'M0 ' + g.Y(v) + 'H' + W} />)}</g>
+          <g stroke-width="1" style={{ stroke: 'var(--grid)' }}>{g.yt.filter(v => v > cur.y0).map(v => <path d={'M0 ' + g.Y(v) + 'H' + W} />)}</g>
           <path d={'M0 0V' + H + 'H' + W} fill="none" stroke-width="1" style={{ stroke: 'var(--subtle)' }} />
           {/* Reference only: the stability labels come from the grid rule, not from this line. */}
           <path d={g.path} fill="none" stroke-width="1.6" stroke-linejoin="round" clip-path="url(#gclip)" style={{ stroke: 'var(--subtle)' }} />
-          <g text-anchor="end" style={TEXT}>{g.yt.map(v => <text x="-8" y={g.Y(v) + 4}>{v}</text>)}</g>
+          <g text-anchor="end" style={TEXT}>{g.yt.map(v => <text x="-8" y={g.Y(v) + 4}>{tickLabel(v)}</text>)}</g>
           <g text-anchor="middle" style={TEXT}>
-            {g.xt.map(v => <text x={g.X(v)} y={H + 20}>{fmt(v)}</text>)}
+            {g.xt.map(v => <text x={g.X(v)} y={H + 20}>{tickLabel(v)}</text>)}
             <text x={W / 2} y={H + 42} style={{ fill: 'var(--ink)' }}>Spindle speed (rpm)</text>
           </g>
-          {info.grid.map(c => {
+          {drag && <rect x={Math.min(drag.x0, drag.x1)} y={Math.min(drag.y0, drag.y1)} width={Math.abs(drag.x1 - drag.x0)} height={Math.abs(drag.y1 - drag.y0)}
+            stroke-width="1" style={{ fill: 'color-mix(in srgb, var(--accent) 12%, transparent)', stroke: 'var(--accent)' }} />}
+          <g clip-path="url(#gclip)">
+          {drawn.map(c => {
             const [k, om, b, s] = c;
             const on = k === sel;
             const cx = g.X(om), cy = g.Y(b);
             return (
               <g class="pt" key={k} data-k={k} role="button" tabindex={on ? 0 : -1} aria-pressed={on ? 'true' : 'false'}
                 aria-label={'Cut ' + k + ', ' + fmt(om) + ' rpm, ' + b + ' mm, ' + (s ? 'stable' : 'unstable')}
-                onClick={() => onPick(k)} onKeyDown={e => key(e, c)} onMouseEnter={() => setHover(c)} onFocus={() => setHover(c)}>
+                onClick={() => { if (!justDragged.current) onPick(k); }} onKeyDown={e => key(e, c)} onMouseEnter={() => setHover(c)} onFocus={() => setHover(c)}>
                 <circle cx={cx} cy={cy} r={g.r + 5} fill="transparent" />
                 {on && <circle cx={cx} cy={cy} r={g.r + 4} fill="none" stroke-width="2.5" style={{ stroke: 'var(--ink)' }} />}
                 <circle cx={cx} cy={cy} r={on ? g.r + 1.5 : g.r} stroke-width={s ? 1.2 : g.r < 4 ? 1.1 : 1.8}
@@ -186,6 +325,7 @@ function GridPlot({ d, info, sel, onPick }) {
               </g>
             );
           })}
+          </g>
         </g>
         <text transform={'translate(16 ' + (M.t + H / 2) + ') rotate(-90)'} text-anchor="middle" style={{ ...TEXT, fill: 'var(--ink)' }}>Axial depth b (mm)</text>
       </svg>
@@ -254,7 +394,8 @@ export function DatasetView({ index, d, k }) {
               </div>
             </div>
             {error ? <div class="err">{error}</div> : info ? <GridPlot d={d} info={info} sel={sel[0]} onPick={pick} /> : <div class="skel" style={{ height: PH + 'px' }} />}
-            <p class="note" style="margin:8px 0 0">The files carry no stability label. Following the dataset documentation, the grid at each spindle speed runs to about two unstable cuts, so the two deepest cuts at each speed are marked unstable. The line is the analytical boundary from stability_boundary{d.n}.mat, shown for reference only. Click a cut, or use the arrow keys.</p>
+            <p class="note" style="margin:8px 0 0">The files carry no stability label. Following the dataset documentation, the grid at each spindle speed runs to about two unstable cuts, so the two deepest cuts at each speed are marked unstable. The line is the analytical boundary from stability_boundary{d.n}.mat, shown for reference only.</p>
+            <p class="note" style="margin:4px 0 0">Drag a box to zoom (drag flat to zoom speed only, tall to zoom depth only), pinch on a touchscreen, or use + and −. Double-click or Reset zoom to see the whole grid. Click a cut to select it; arrow keys move between cuts.</p>
           </section>
           {sel && <SelectedCut d={d} info={info} c={sel} index={index} />}
         </main>
