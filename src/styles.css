@@ -82,7 +82,7 @@ code { font-family: Consolas, 'Courier New', monospace; font-size: 0.95em; }
 .box { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--subtle); background: var(--surface); display: flex; align-items: center; justify-content: center; flex: none; color: var(--on-accent); }
 .opt[aria-pressed='true'] .box { border-color: var(--accent); background: var(--accent); }
 .opt .n { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.filters-toggle { display: none; }
+.filters-toggle, .sheet-x, .sheet-f { display: none; }
 @media (min-width: 900px) {
   /* Filters stay in view while scrolling 155 cards; a long list scrolls inside the panel. */
   .filters { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: thin; }
@@ -91,7 +91,19 @@ code { font-family: Consolas, 'Courier New', monospace; font-size: 0.95em; }
   .filters-toggle { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 14px; border: 1px solid var(--field); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 700; cursor: pointer; }
   .filters-toggle .badge { background: var(--accent); color: var(--on-accent); border-radius: 999px; font-size: 12px; padding: 1px 7px; }
   .filters.collapsed { display: none; }
-  .filters { flex-basis: 100%; }
+  /* Open filters cover the screen like a sheet, with the result count on a button at the bottom. */
+  .filters { position: fixed; inset: 0; z-index: 50; border: 0; border-radius: 0; overflow-y: auto; padding: 0; overscroll-behavior: contain; }
+  .filters-h { position: sticky; top: 0; z-index: 1; background: var(--surface); border-bottom: 1px solid var(--line2); padding: 8px 8px 8px 18px; gap: 10px; }
+  .filters-h .note { margin-left: auto; }
+  .sheet-x { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; background: transparent; color: var(--ink); cursor: pointer; border-radius: 8px; }
+  .facet:first-of-type { border-top: 0; }
+  .opt { min-height: 42px; }
+  .sheet-f { display: flex; gap: 8px; position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  /* Search and the Filters button share a row; Classify by gets its own row and scrolls sideways. */
+  .search { flex: 1 1 0; }
+  .seg { flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .seg::-webkit-scrollbar { display: none; }
+  .seg button, .seg-l { flex: none; white-space: nowrap; }
 }
 
 .results { flex: 999 1 560px; min-width: 0; }
@@ -120,10 +132,10 @@ code { font-family: Consolas, 'Courier New', monospace; font-size: 0.95em; }
 .ds-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 32px; margin-bottom: 20px; }
 .ds-head h1 { margin: 0; font-size: 32px; color: var(--ink); }
 .lead { margin: 6px 0 0; font-size: 15px; color: var(--muted); line-height: 1.45; }
-.kpis { display: flex; flex-wrap: wrap; gap: 10px; }
-.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; min-width: 104px; }
-.kpi b { display: block; font-size: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
-.kpi span { font-size: 12px; color: var(--muted); }
+.selfile { flex: 0 1 460px; display: flex; align-items: center; gap: 12px 20px; padding: 12px 14px 12px 18px; border-color: var(--tint-line); }
+.selfile > div { flex: 1; }
+.sf-n { font-size: 18px; color: var(--ink); margin-bottom: 3px; }
+.selfile .btn { flex: none; }
 .side { flex: 1 1 300px; max-width: 100%; display: flex; flex-direction: column; gap: 12px; }
 .side > .card { padding: 14px 18px; }
 .card h2.t { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); }
@@ -137,9 +149,12 @@ dl.kv dd { margin: 0; font-weight: 700; text-align: right; font-variant-numeric:
 .main { flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); }
 .legend > span { display: flex; align-items: center; gap: 6px; }
-.gridwrap { position: relative; overflow-x: auto; }
+.gcard { padding: 18px 20px; }
+/* Once the inputs no longer fit beside the grid, the grid comes first and the inputs follow it. */
+@media (max-width: 1027px) { .ds-row > .side { order: 2; } }
+.gridwrap { position: relative; }
 /* touch-action keeps one-finger scrolling for the page but hands two-finger pinches to the plot. */
-.gridplot { display: block; min-width: 560px; user-select: none; touch-action: pan-x pan-y; cursor: crosshair; }
+.gridplot { display: block; user-select: none; touch-action: pan-x pan-y; cursor: crosshair; }
 .gridplot.dragging, .gridplot.dragging .pt { cursor: crosshair; }
 .zoombar { position: absolute; z-index: 2; display: flex; gap: 4px; }
 .zoombar button { min-width: 32px; height: 32px; padding: 0 10px; border: 1px solid var(--field); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: var(--shadow); }
@@ -197,6 +212,8 @@ a.fitem:hover { border-color: var(--tint-line); background: var(--tint); color: 
 .splot { flex: 1 1 220px; min-width: 0; }
 .plot { background: var(--plot); border-radius: 6px; height: 170px; overflow: hidden; }
 .axis-c { font-size: 11px; color: var(--muted); padding-top: 4px; text-align: center; }
+.cap-btn { font-size: 11px; height: auto; padding: 4px 2px; }
+@media (pointer: coarse) { .cap-btn { font-size: 13px; padding: 10px 6px; } }
 .spec { position: relative; height: 170px; background: var(--plot); border-radius: 6px; overflow: hidden; }
 .spec svg { display: block; width: 100%; height: 100%; }
 .spec-ticks { position: relative; height: 18px; font-size: 11px; color: var(--muted); }
@@ -225,12 +242,31 @@ pre.code { margin: 0; background: var(--code-bg); color: var(--code-fg); border-
 }
 @media (max-width: 640px) {
   .hdr-in, .page { padding-left: 16px; padding-right: 16px; }
+  /* Header: brand and an icon-only theme picker on one row, the three tabs on the next. */
+  .hdr-in { padding-top: 8px; padding-bottom: 6px; gap: 4px 12px; }
+  .brand { flex: 1 1 0; min-width: 0; gap: 10px; }
+  .mark { width: 32px; height: 32px; }
+  .brand-t { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .brand-s { display: none; }
-  .hdr-r { margin-left: 0; gap: 12px; }
+  .hdr-r { order: 2; margin-left: 0; gap: 12px; }
+  .nav { order: 3; flex: 1 1 100%; margin: 0 -6px; }
+  .nav a { padding: 9px 12px; }
+  .theme select { width: 40px; height: 36px; padding: 0; color: transparent; }
+  .theme .ic { left: 12px; }
+  .theme .chev { display: none; }
+  .page { padding-top: 16px; }
+  .page.tight { padding-top: 14px; }
   .stats { display: none; }  /* the result count under the search box carries the number */
   .files2 { grid-template-columns: 1fr; }
+  .ds-head { gap: 12px; margin-bottom: 14px; }
   .ds-head h1 { font-size: 26px; }
-  .f-head h1 { font-size: 22px; }
+  .lead { font-size: 14px; }
+  .selfile { flex-basis: 100%; padding: 10px 10px 10px 14px; }
+  .sf-n { font-size: 16px; }
+  .selfile .btn { padding: 0 14px; }
+  .gcard { padding: 14px 10px 14px 6px; }
+  .gcard > div:first-child, .gcard > .note { padding-left: 8px; }
+  .row { gap: 14px; }  .f-head h1 { font-size: 22px; }
   .empty { padding: 32px 20px; }
   .tools { margin-left: 0; }
   .segpill { max-width: 100%; }

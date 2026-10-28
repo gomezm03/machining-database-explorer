@@ -267,9 +267,13 @@ export function FileView({ index, d, k, theme }) {
 
   const defWin = t ? [t[T - 1] - 4 * 60 / rpm, t[T - 1]] : null;
   const curWin = win === undefined ? defWin : win;
-  const caption = win === undefined ? 'Last 4 of ' + revs + ' revolutions · drag to zoom, double-click for the whole record'
-    : win === null ? 'All ' + revs + ' revolutions · drag to zoom'
-      : win ? ((win[1] - win[0]) * rpm / 60).toFixed(1) + ' revolutions · double-click for the whole record' : '';
+  // Touchscreens cannot drag-zoom uPlot, so the caption carries a button between the two standard views.
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const what = win === undefined ? 'Last 4 of ' + revs + ' revolutions' : win === null ? 'All ' + revs + ' revolutions'
+    : win ? ((win[1] - win[0]) * rpm / 60).toFixed(1) + ' revolutions' : '';
+  const hint = touch ? '' : win === null ? ' · drag to zoom' : ' · drag to zoom, double-click for the whole record';
+  const caption = <>{what}{hint}{t && <> · <button type="button" class="linkbtn cap-btn" onClick={() => setWin(win === null ? undefined : null)}>
+    {win === null ? 'show last 4' : 'show all ' + revs}</button></>}</>;
 
   const effBody = qty === 'force' ? 't' : body;
   const quickNames = resultant ? ['ForceRnew'] : qty === 'force' ? ['Forcex', 'Forcey'] : ['x', 'y'].map(a => a + effBody + qty);
@@ -395,7 +399,7 @@ export function FileView({ index, d, k, theme }) {
           {err ? (
             <div class="err">
               {err === 'nocut'
-                ? <>Dataset {d.n} has no cut K = {k}: its cuts are numbered 1 to {fmt(d.files)}. <a href={'#/ds/' + d.n}>Pick one on the grid of cuts</a>.</>
+                ? <>Dataset {d.n} has no file {k}: its files are numbered 1 to {fmt(d.files)}. <a href={'#/ds/' + d.n}>Pick one on the grid of cuts</a>.</>
                 : err === 'missing'
                   ? <>This file is not on the Hugging Face mirror yet: the full upload is still running. Try <a href="#/file/1/34">time1_34.mat</a>, or get it from <a href={KAGGLE} target="_blank" rel="noopener">Kaggle</a>.</>
                   : <>Could not load {name}: {err}</>}

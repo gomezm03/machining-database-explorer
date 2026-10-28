@@ -4,20 +4,13 @@ import { prefetch } from './filecache.js';
 import { GROUPS, GroupPill, VARIANT, loadDataset, fmt, fmtBytes, family, immersionOf, dirOf, pitchOf } from './data.js';
 
 const M = { l: 56, r: 24, t: 16, b: 60 }, PH = 420;  // plot margins and total height
+const plotHeight = width => width < 500 ? 340 : PH;  // phones: shorter, so the selected cut stays close below
+const coarse = () => matchMedia('(pointer: coarse)').matches;
 const TEXT = { fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12px', fill: 'var(--muted)' };
 
 function niceStep(max) {
   for (const s of [1, 2, 4, 5, 10, 20]) if (max / s <= 9) return s;
   return 50;
-}
-
-export function blimAt(boundary, om) {
-  const x = boundary.om, y = boundary.b;
-  if (om <= x[0]) return y[0];
-  if (om >= x[x.length - 1]) return y[y.length - 1];
-  let i = 1;
-  while (x[i] < om) i++;
-  return y[i - 1] + (y[i] - y[i - 1]) * (om - x[i - 1]) / (x[i] - x[i - 1]);
 }
 
 function Kv({ rows }) {
@@ -124,7 +117,8 @@ function GridPlot({ d, info, sel, onPick }) {
   const pinch = useRef(null);
   useLayoutEffect(() => {
     const el = wrap.current;
-    const ro = new ResizeObserver(() => setWidth(Math.max(560, el.clientWidth)));
+    // Floor the measured width: an SVG a fraction of a pixel wider than its box would overflow it.
+    const ro = new ResizeObserver(() => setWidth(Math.max(280, Math.floor(el.getBoundingClientRect().width))));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -133,12 +127,15 @@ function GridPlot({ d, info, sel, onPick }) {
     if (focusK.current != null) { wrap.current.querySelector('[data-k="' + focusK.current + '"]')?.focus(); focusK.current = null; }
   });
 
-  const W = width - M.l - M.r, H = PH - M.t - M.b;
+  const ph = plotHeight(width);
+  const W = width - M.l - M.r, H = ph - M.t - M.b;
   // Full extent of the grid: every speed, and from 0 to a little above the deepest cut.
   const base = useMemo(() => {
     const om = info.grid.map(c => c[1]);
     const bo = info.boundary;
-    const x0 = Math.min(bo.om[0], ...om), x1 = Math.max(bo.om[bo.om.length - 1], ...om);
+    // Half a speed step of room at each end, so the first and last columns of points are not cut in half.
+    const pad = (d.p.omStep || 500) / 2;
+    const x0 = Math.min(bo.om[0], ...om) - pad, x1 = Math.max(bo.om[bo.om.length - 1], ...om) + pad;
     const bmax = Math.max(...info.grid.map(c => c[2]));
     const lmax = Math.max(...bo.b.filter((v, i) => bo.om[i] >= x0 && bo.om[i] <= x1));
     const want = Math.max(bmax * 1.08, Math.min(lmax, bmax * 1.6));
@@ -291,7 +288,7 @@ function GridPlot({ d, info, sel, onPick }) {
         <button type="button" onClick={() => zoomBy(0.5)} disabled={!view} aria-label="Zoom out" title="Zoom out (−)">−</button>
         {view && <button type="button" class="reset" onClick={() => setView(null)} title="Show the whole grid (0)">Reset zoom</button>}
       </div>
-      <svg ref={svg} class={'gridplot' + (drag ? ' dragging' : '')} width={width} height={PH} viewBox={'0 0 ' + width + ' ' + PH} role="group"
+      <svg ref={svg} class={'gridplot' + (drag ? ' dragging' : '')} width={width} height={ph} viewBox={'0 0 ' + width + ' ' + ph} role="group"
         aria-label={'Grid of cuts of dataset ' + d.n + ', ' + fmt(Math.round(cur.x0)) + ' to ' + fmt(Math.round(cur.x1)) + ' rpm' + (view ? ' (zoomed)' : '') + '. Use arrow keys to move between cuts, plus and minus to zoom.'}
         onMouseLeave={() => setHover(null)} onPointerDown={onDown}
         onDblClick={e => { if (!e.target.closest('.zoombar')) setView(null); }}>
@@ -316,7 +313,7 @@ function GridPlot({ d, info, sel, onPick }) {
             const cx = g.X(om), cy = g.Y(b);
             return (
               <g class="pt" key={k} data-k={k} role="button" tabindex={on ? 0 : -1} aria-pressed={on ? 'true' : 'false'}
-                aria-label={'Cut ' + k + ', ' + fmt(om) + ' rpm, ' + b + ' mm, ' + (s ? 'stable' : 'unstable')}
+                aria-label={'File ' + k + ', ' + fmt(om) + ' rpm, ' + b + ' mm, ' + (s ? 'stable' : 'unstable')}
                 onClick={() => { if (!justDragged.current) onPick(k); }} onKeyDown={e => key(e, c)} onMouseEnter={() => setHover(c)} onFocus={() => setHover(c)}>
                 <circle cx={cx} cy={cy} r={g.r + 5} fill="transparent" />
                 {on && <circle cx={cx} cy={cy} r={g.r + 4} fill="none" stroke-width="2.5" style={{ stroke: 'var(--ink)' }} />}
@@ -331,7 +328,7 @@ function GridPlot({ d, info, sel, onPick }) {
       </svg>
       {tip && (
         <div class="hover-tip" style={{ left: tip.left + 'px', top: tip.top + 'px' }}>
-          <b>K{hover[0]}</b> · {fmt(hover[1])} rpm · {hover[2]} mm<br />
+          <b>File {hover[0]}</b> · {fmt(hover[1])} rpm · {hover[2]} mm<br />
           {hover[3] ? 'stable' : 'unstable'}
         </div>
       )}
@@ -358,8 +355,6 @@ export function DatasetView({ index, d, k }) {
   }, [d.n, sel && sel[0]]);
   const pick = kk => { history.replaceState(null, '', '#/ds/' + d.n + '?k=' + kk); dispatchEvent(new HashChangeEvent('hashchange')); };
   const nBelow = info ? info.grid.filter(c => c[3]).length : 0;
-  const revs = d.group === 'sound' ? 500 : 60;
-  const bytes = info ? info.size.reduce((a, b) => a + b, 0) : 0;
   const tag = d.n === 1 ? 'Unique · baseline' : d.base ? GROUPS[d.group].label + ' · copy of ' + d.base : null;
 
   return (
@@ -373,39 +368,51 @@ export function DatasetView({ index, d, k }) {
           </div>
           <p class="lead">{blurb}</p>
         </div>
-        <div class="kpis">
-          <div class="kpi"><b>{fmt(d.files)}</b><span>cuts (time files)</span></div>
-          <div class="kpi"><b>{d.speeds}</b><span>spindle speeds</span></div>
-          <div class="kpi"><b>{revs}</b><span>revolutions per cut</span></div>
-          <div class="kpi"><b>{info ? fmtBytes(bytes) : '…'}</b><span>.mat files to download</span></div>
-        </div>
+        <SelectedFile d={d} info={info} c={sel} />
       </div>
 
-      <div class="row">
+      <div class="row ds-row">
         <Inputs d={d} index={index} />
         <main class="main">
-          <section class="card" style="padding:18px 20px">
+          <section class="card gcard">
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 24px;margin-bottom:8px">
-              <h2 class="h2" style="font-size:16px">Grid of cuts</h2>
+              <h2 class="h2" style="font-size:16px">Grid of cuts <span class="num" style="font-weight:400;color:var(--muted)">· {fmt(d.files)} points</span></h2>
               <div class="legend" style="margin-left:auto">
                 <span><span class="dot" style="width:11px;height:11px;background:var(--accent)" />stable ({nBelow})</span>
                 <span><span class="dot" style="width:11px;height:11px;border:2px solid var(--chatter);background:var(--surface);box-sizing:border-box" />unstable ({info ? info.grid.length - nBelow : 0})</span>
                 <span><span style="width:18px;height:0;border-top:1.6px solid var(--subtle)" />analytical boundary (reference)</span>
               </div>
             </div>
-            {error ? <div class="err">{error}</div> : info ? <GridPlot d={d} info={info} sel={sel[0]} onPick={pick} /> : <div class="skel" style={{ height: PH + 'px' }} />}
+            {error ? <div class="err">{error}</div> : info ? <GridPlot d={d} info={info} sel={sel[0]} onPick={pick} /> : <div class="skel" style={{ height: plotHeight(innerWidth - 72) + 'px' }} />}
             <p class="note" style="margin:8px 0 0">The files carry no stability label. Following the dataset documentation, the grid at each spindle speed runs to about two unstable cuts, so the two deepest cuts at each speed are marked unstable. The line is the analytical boundary from stability_boundary{d.n}.mat, shown for reference only.</p>
-            <p class="note" style="margin:4px 0 0">Drag a box to zoom (drag flat to zoom speed only, tall to zoom depth only), pinch on a touchscreen, or use + and −. Double-click or Reset zoom to see the whole grid. Click a cut to select it; arrow keys move between cuts.</p>
+            <p class="note" style="margin:4px 0 0">{coarse()
+              ? 'Tap a cut to select it. Pinch or use + and − to zoom; Reset zoom shows the whole grid.'
+              : 'Drag a box to zoom (drag flat to zoom speed only, tall to zoom depth only), or use + and −. Double-click or Reset zoom to see the whole grid. Click a cut to select it; arrow keys move between cuts.'}</p>
           </section>
-          {sel && <SelectedCut d={d} info={info} c={sel} index={index} />}
+          {sel && <CutFiles d={d} k={sel[0]} index={index} />}
         </main>
       </div>
     </div>
   );
 }
 
-function SelectedCut({ d, info, c, index }) {
+// Top of the page, just above the grid: what is selected and the way into the file viewer.
+function SelectedFile({ d, info, c }) {
+  if (!c) return <div class="card selfile" aria-hidden="true"><span class="skel" style="height:44px;flex:1" /></div>;
   const [k, om, b, s] = c;
+  const size = info.size[info.grid.indexOf(c)];
+  return (
+    <section class="card selfile" aria-live="polite" aria-label="Selected file">
+      <div style="min-width:0">
+        <div class="num sf-n"><b>File {k}</b> · {fmt(om)} rpm · {b} mm</div>
+        <div class="note"><strong class={s ? 'stable-t' : 'chatter-t'}>{s ? 'Stable' : 'Unstable'}</strong> · time{d.n}_{k}.mat{size ? ' · ' + fmtBytes(size) : ''}</div>
+      </div>
+      <a class="btn" href={'#/file/' + d.n + '/' + k}>Open file →</a>
+    </section>
+  );
+}
+
+function CutFiles({ d, k, index }) {
   const fam = family(d);
   const files = fam.map(n => {
     const o = index.datasets.find(e => e.n === n);
@@ -414,26 +421,14 @@ function SelectedCut({ d, info, c, index }) {
   const snd = fam.find(n => n >= 126);
   if (snd) files.push({ n: snd, name: 'ForceR' + snd + '_' + k + '.wav', desc: 'sound of the resultant force', color: GROUPS.sound.dot, href: '#/file/' + snd + '/' + k });
   files.push({ n: d.n, name: 'stability_boundary' + d.n + '.mat', desc: 'omega_vector, blim_vector', color: 'var(--fit)' });
-  const size = info.size[info.grid.indexOf(c)];
   return (
-    <section class="card" aria-live="polite" style="padding:18px 20px;display:flex;flex-wrap:wrap;gap:20px 32px">
-      <div style="flex:1 1 260px">
-        <div class="cap" style="color:var(--link);letter-spacing:0.8px">Selected cut · K = {k}</div>
-        <div class="num" style="font-size:26px;font-weight:700;color:var(--ink);margin:6px 0 4px">{fmt(om)} rpm · {b} mm</div>
-        <div style="font-size:14px;color:var(--muted);line-height:1.45">
-          <strong class={s ? 'stable-t' : 'chatter-t'}>{s ? 'Stable' : 'Unstable'}</strong>{s ? '' : ': one of the two deepest cuts at ' + fmt(om) + ' rpm'}<br />
-          Analytical boundary here: {blimAt(info.boundary, om).toFixed(2)} mm (reference)</div>
-        <a class="btn" href={'#/file/' + d.n + '/' + k} style="margin-top:14px">Open in file viewer →</a>
-        {size && <div class="note" style="margin-top:8px">time{d.n}_{k}.mat · {fmtBytes(size)}</div>}
-      </div>
-      <div style="flex:2 1 420px">
-        <div class="cap" style="letter-spacing:0.8px;margin-bottom:8px">Files for this speed and depth</div>
-        <div class="files2">
-          {files.map(f => {
-            const inner = <><span class="bar" style={{ background: f.color }} /><div style="min-width:0"><div class="fname">{f.name}</div><div class="note">{f.desc}</div></div></>;
-            return f.href ? <a class="fitem" href={f.href}>{inner}</a> : <div class="fitem">{inner}</div>;
-          })}
-        </div>
+    <section class="card" style="padding:16px 20px">
+      <div class="cap" style="letter-spacing:0.8px;margin-bottom:8px">File {k} in every version</div>
+      <div class="files2">
+        {files.map(f => {
+          const inner = <><span class="bar" style={{ background: f.color }} /><div style="min-width:0"><div class="fname">{f.name}</div><div class="note">{f.desc}</div></div></>;
+          return f.href ? <a class="fitem" href={f.href}>{inner}</a> : <div class="fitem">{inner}</div>;
+        })}
       </div>
     </section>
   );

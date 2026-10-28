@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { Icon } from './icons.jsx';
 import { FACETS, GROUPS, GroupPill, describe, subtitle, haystack, fmt, kfmt, pitchOf, immersionOf, dirOf } from './data.js';
 
@@ -70,6 +70,12 @@ export function Explorer({ index, state, setState }) {
   const { sel, groupBy, q } = state;
   const all = index.datasets;
   const [filtersOpen, setFiltersOpen] = useState(false);  // phones only; always shown from 900 px up
+  // Below 900 px the open filters cover the screen, so the page behind must not scroll.
+  useEffect(() => {
+    if (!filtersOpen || !matchMedia('(max-width: 899px)').matches) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [filtersOpen]);
 
   const counts = useMemo(() => {
     const c = {};
@@ -111,7 +117,7 @@ export function Explorer({ index, state, setState }) {
         <div class="search">
           <Icon name="search" size={20} />
           <input id="q" type="search" value={q} onInput={e => setState({ q: e.currentTarget.value })}
-            placeholder="Search by dataset number, tool, dynamics… e.g. 25, 2 teeth, process damping" />
+            placeholder={matchMedia('(max-width: 640px)').matches ? 'e.g. 25, 2 teeth, damping' : 'Search by dataset number, tool, dynamics… e.g. 25, 2 teeth, process damping'} />
         </div>
         <button type="button" class="filters-toggle" aria-expanded={filtersOpen ? 'true' : 'false'} aria-controls="filters" onClick={() => setFiltersOpen(o => !o)}>
           <Icon name="settings" size={18} />{filtersOpen ? 'Hide filters' : 'Filters'}
@@ -130,6 +136,7 @@ export function Explorer({ index, state, setState }) {
           <div class="filters-h">
             <h2><Icon name="settings" size={18} color="var(--accent)" />Filters</h2>
             <span class="note">counts across all {all.length}</span>
+            <button type="button" class="sheet-x" aria-label="Close filters" onClick={() => setFiltersOpen(false)}><Icon name="close" size={20} stroke={2.2} /></button>
           </div>
           {FACETS.map(f => (
             <section class="facet">
@@ -147,6 +154,12 @@ export function Explorer({ index, state, setState }) {
               })}
             </section>
           ))}
+          <div class="sheet-f">
+            {nSel > 0 && <button type="button" class="tbtn" style="height:46px" onClick={() => setState({ sel: {} })}>Clear</button>}
+            <button type="button" class="btn" style="flex:1;justify-content:center;height:46px" onClick={() => setFiltersOpen(false)}>
+              Show {hits.length} {hits.length === 1 ? 'dataset' : 'datasets'}
+            </button>
+          </div>
         </aside>
 
         <main class="results">
