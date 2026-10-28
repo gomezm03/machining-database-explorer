@@ -5,6 +5,6 @@ import preact from '@preact/preset-vite';
 export default defineConfig({
   base: './',
   plugins: [preact()],
-  // The project lives in OneDrive, whose sync layer drops file-change events: poll so edits always reach the dev server.
+  // File-change events were missed on this machine (the dev server kept serving stale modules), so poll instead.
   server: { watch: { usePolling: true, interval: 250 } },
 });
