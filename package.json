@@ -1,0 +1,21 @@
+{
+  "name": "machining-database-explorer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "node scripts/deploy.mjs",
+    "index": "C:\\Users\\gomez\\anaconda3\\python.exe scripts/build_index.py"
+  },
+  "dependencies": {
+    "preact": "^11.1.0",
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "vite": "^8.3.5"
+  }
+}
